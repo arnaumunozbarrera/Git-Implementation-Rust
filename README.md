@@ -7,7 +7,7 @@ Arnau Muñoz Barrera
 
 ---
 
-## 📌 Project Overview
+## Project Overview
 
 This project aims to design and implement a simplified but functional version control system inspired by Git.  
 The system is developed entirely in **Rust**, focusing on performance, memory safety, and low-level system design.
@@ -21,7 +21,7 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 
 ---
 
-## 🎯 Objectives
+## Objectives
 
 -  
 -  
@@ -30,7 +30,7 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 
 ---
 
-## 🏗️ System Architecture
+## System Architecture
 
 ### High-Level Architecture
 
@@ -64,7 +64,7 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```bash
 /
