@@ -16,40 +16,14 @@ fn main() {
     match command.as_str() {
         // Initialization section of `.voor` folder
         "init" => { 
-            if Path::new(".voor").exists() {
-                println!("[INFO] `.voor` directory already initialized\n");
-            } else {
-                fs::create_dir(".voor").unwrap();
-                fs::create_dir(".voor/objects").unwrap();
-                fs::create_dir(".voor/ref").unwrap();
-                fs::write(".voor/HEAD", "ref: refs/heads/master\n").unwrap();
-                println!("[INFO] `.voor` directory initialized successfully!\n");
-            }
+            init_command();
         }
         // Creation of cat-file
         "cat-file" => {
             let argument = &args[2];
-            println!("[DEBUG] Argument typed: {}", argument);
+            let hash = &args[3].clone();
 
-            if argument == "-p" {
-                let hash = &args[3].clone();
-                // println!("[DEBUG] Hash value: {}", hash);
-                
-                let folder_name = &hash[0..2];
-                let file_name = &hash[2..];
-
-                println!("[DEBUG] Folder name: {}, File name: {}", folder_name, file_name);
-
-                let path = format!(".voor/objects/{folder_name}/{file_name}");
-                let mut file = fs::File::open(path).expect("[WARN] Unable to open file");
-                let mut contents = String::new();
-
-                file.read_to_string(&mut contents).expect("[WARN] Unable to read content from file");
-
-                println!("[DEBUG] File content: {}", contents);
-            } else {
-                println!("[INFO] Unknown argument. Did you mean `-p`?\n");
-            }
+            cat_file_command(&argument, &hash);
         }
         // Default response for unknown command
         _ => {
@@ -57,4 +31,39 @@ fn main() {
         }
     }
     
+}
+
+fn init_command() {
+    if Path::new(".voor").exists() {
+        println!("[INFO] `.voor` directory already initialized\n");
+    } else {
+        fs::create_dir(".voor").unwrap();
+        fs::create_dir(".voor/objects").unwrap();
+        fs::create_dir(".voor/ref").unwrap();
+        fs::write(".voor/HEAD", "ref: refs/heads/master\n").unwrap();
+        println!("[INFO] `.voor` directory initialized successfully!\n");
+    }
+}
+
+fn cat_file_command(argument: &str, hash: &str) {
+    // println!("[DEBUG] Argument typed: {}", argument);
+
+    if argument == "-p" {
+        // println!("[DEBUG] Hash value: {}", hash);
+        
+        let folder_name = &hash[0..2];
+        let file_name = &hash[2..];
+
+        println!("[DEBUG] Folder name: {}, File name: {}", folder_name, file_name);
+
+        let path = format!(".voor/objects/{folder_name}/{file_name}");
+        let mut file = fs::File::open(path).expect("[WARN] Unable to open file\n");
+        let mut contents = String::new();
+
+        file.read_to_string(&mut contents).expect("[WARN] Unable to read content from file\n");
+
+        // println!("[DEBUG] File content: {}", contents);
+    } else {
+        println!("[INFO] Unknown argument. Did you mean `-p`?\n");
+    }
 }
