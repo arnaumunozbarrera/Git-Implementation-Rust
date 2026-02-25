@@ -108,7 +108,7 @@ If `requirements.txt` is not included, manually install:
 ## Run the project  
 
 ```
-cd .\personal-git\src\ 
+cd .\personal-git\
 ```
 ### Initialize `.voor` 
 ```
