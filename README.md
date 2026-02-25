@@ -22,8 +22,6 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 ---
 
 ## Objectives
-
--  
 -  
 -  
 -  
@@ -51,8 +49,6 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 -  
 -  
 -  
--  
--  
 
 ---
 
@@ -66,7 +62,7 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 
 ## Project Structure
 
-```bash
+```
 /
 ├── backend/        # Core VCS engine
 │   ├── src/
@@ -79,14 +75,13 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 ├── docs/           # Design documentation and diagrams
 ├── tests/          # Integration and unit tests
 └── README.md
-
+```
 ---
 
 # Results  
 
 -  
 -
-- 
 - 
 
 ---
@@ -95,22 +90,29 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 
 ## Clone the repository  
 
-```sh
+```
 git clone https://github.com/arnaumunozbarrera/Git-Implementation-Rust.git
 cd Git-Implementation-Rust
 ```
 
 ## Install dependencies  
 
-```sh
+```
 ```
 
 If `requirements.txt` is not included, manually install:
 
-```sh
+```
 ```
 
 ## Run the project  
 
-```sh
 ```
+cd .\personal-git\src\ 
+```
+### Initialize `.voor` 
+```
+cargo run -- init
+```
+
+This command should create a `.voor` folder containing the main folders and files for later development
