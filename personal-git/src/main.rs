@@ -1,5 +1,6 @@
 #[allow(unused_imports)]
 use std::env;
+use std::{fmt::format, io::Read};
 #[allow(unused_imports)]
 use std::fs;
 use std::path::Path;
@@ -31,7 +32,21 @@ fn main() {
             println!("[DEBUG] Argument typed: {}", argument);
 
             if argument == "-p" {
+                let hash = &args[3].clone();
+                // println!("[DEBUG] Hash value: {}", hash);
                 
+                let folder_name = &hash[0..2];
+                let file_name = &hash[2..];
+
+                println!("[DEBUG] Folder name: {}, File name: {}", folder_name, file_name);
+
+                let path = format!(".voor/objects/{folder_name}/{file_name}");
+                let mut file = fs::File::open(path).expect("[WARN] Unable to open file");
+                let mut contents = String::new();
+
+                file.read_to_string(&mut contents).expect("[WARN] Unable to read content from file");
+
+                println!("[DEBUG] File content: {}", contents);
             } else {
                 println!("[INFO] Unknown argument. Did you mean `-p`?\n");
             }
