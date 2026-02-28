@@ -1,10 +1,11 @@
+use core::hash;
 use std::{
-    fs,
-    path::Path,
-    env,
-    io::{self, Read, Write}
+    env, fs::{self, File}, io::{self, Read, Write}, path::Path
 };
 use flate2::read::ZlibDecoder;
+use flate2::write::ZlibEncoder;
+use flate2::Compression;
+use sha1::{Sha1, Digest};
 
 fn main() {
     println!("Hello, I'm Arnau and this will be my personal implementation of Git as a version controller with Rust! \n");
@@ -25,6 +26,13 @@ fn main() {
             let hash = &args[3].clone();
 
             cat_file_command(&argument, &hash);
+        }
+        // Creation of hash-object
+        "hash-object" => {
+            let argument = &args[2];
+            let file_path = &args[3].clone();
+
+            hash_object_command(&argument, &file_path);
         }
         // Default response for unknown command
         _ => {
@@ -48,7 +56,6 @@ fn init_command() {
 
 fn cat_file_command(argument: &str, hash: &str) {
     // println!("[DEBUG] Argument typed: {}", argument);
-
     if argument == "-p" {
         // println!("[DEBUG] Hash value: {}", hash);
         
@@ -74,5 +81,37 @@ fn cat_file_command(argument: &str, hash: &str) {
         io::stdout().flush().unwrap();
     } else {
         println!("[INFO] Unknown argument. Did you mean `-p`?\n");
+    }
+}
+
+fn hash_object_command(argument: &str, file_path: &str) {
+    if argument == "-w" {
+        // Read content from file_path
+        let mut object = fs::File::open(file_path).expect("[WARN] Unable to read content from file\n");
+        let mut content = Vec::new();
+        object.read_to_end(&mut content).expect("[WARN] Unable to read content from file\n");
+
+        // Hash creation & apply blob format
+        let header = format!("blob {}\0", content.len());
+        let mut full = header.into_bytes();
+        full.extend(content);
+
+        let mut hasher = Sha1::new();
+        hasher.update(&full);
+        let hash = format!("{:x}", hasher.finalize());
+
+        let (dir, file) = hash.split_at(2);
+        fs::create_dir_all(format!(".voor/objects/{}", dir)).unwrap();
+
+        // Compress
+        let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+        encoder.write_all(&full).unwrap();
+        let compressed = encoder.finish().unwrap();
+
+        fs::write(format!(".voor/objects/{}/{}", dir, file), compressed).unwrap();
+
+        println!("[INFO] Blob created successfully at folder: ./voor/objects/{} with a hash value of: {}", dir, hash);
+    } else {
+        println!("[INFO] Unknown argument. Did you mean `-w`?\n");
     }
 }
