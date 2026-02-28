@@ -1,9 +1,10 @@
-#[allow(unused_imports)]
-use std::env;
-use std::{fmt::format, io::Read};
-#[allow(unused_imports)]
-use std::fs;
-use std::path::Path;
+use std::{
+    fs,
+    path::Path,
+    env,
+    io::{self, Read, Write}
+};
+use flate2::read::ZlibDecoder;
 
 fn main() {
     println!("Hello, I'm Arnau and this will be my personal implementation of Git as a version controller with Rust! \n");
@@ -57,12 +58,20 @@ fn cat_file_command(argument: &str, hash: &str) {
         println!("[DEBUG] Folder name: {}, File name: {}", folder_name, file_name);
 
         let path = format!(".voor/objects/{folder_name}/{file_name}");
-        let mut file = fs::File::open(path).expect("[WARN] Unable to open file\n");
-        let mut contents = String::new();
+        let mut object = fs::File::open(path).expect("[WARN] Unable to open file\n");
+        let mut content: Vec<u8> = vec![];
+        let mut extracted_content = String::new();
 
-        file.read_to_string(&mut contents).expect("[WARN] Unable to read content from file\n");
+        object.read_to_end(&mut content).expect("[WARN] Unable to read content from file\n");
 
-        // println!("[DEBUG] File content: {}", contents);
+        let mut decoder = ZlibDecoder::new(content.as_slice());
+
+        decoder.read_to_string(&mut extracted_content).unwrap();
+        let split = extracted_content.split("\x00");
+        let extracted_content = split.last().unwrap();
+
+        println!("[DEBUG] Extracted file content: {}", extracted_content);
+        io::stdout().flush().unwrap();
     } else {
         println!("[INFO] Unknown argument. Did you mean `-p`?\n");
     }
