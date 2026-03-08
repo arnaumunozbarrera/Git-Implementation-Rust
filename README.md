@@ -22,8 +22,6 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 ---
 
 ## Objectives
-
--  
 -  
 -  
 -  
@@ -51,8 +49,6 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 -  
 -  
 -  
--  
--  
 
 ---
 
@@ -66,7 +62,7 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 
 ## Project Structure
 
-```bash
+```
 /
 ├── backend/        # Core VCS engine
 │   ├── src/
@@ -79,14 +75,13 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 ├── docs/           # Design documentation and diagrams
 ├── tests/          # Integration and unit tests
 └── README.md
-
+```
 ---
 
 # Results  
 
 -  
 -
-- 
 - 
 
 ---
@@ -95,22 +90,43 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 
 ## Clone the repository  
 
-```sh
+```
 git clone https://github.com/arnaumunozbarrera/Git-Implementation-Rust.git
 cd Git-Implementation-Rust
 ```
 
 ## Install dependencies  
 
-```sh
+```
 ```
 
-If `requirements.txt` is not included, manually install:
+If `Cargo.toml` is not included, manually install:
 
-```sh
+```
 ```
 
 ## Run the project  
 
-```sh
 ```
+cd .\personal-git\
+```
+### Initialize `.voor` 
+```
+cargo run -- init
+```
+
+This command creates a `.voor` folder containing the main folders and files for later development
+
+### Cat-file
+```
+cargo run cat-file -p {hash-value}
+```
+
+This command displays the content of a created blob file inside the `.voor/objects` folder. {hash-value} refers to the name of the file selected to display its content.
+
+### Hash-object
+```
+cargo run hash-object -w {file or file_path}
+```
+
+This command creates a blob object inside the `.voor/objects` structure to maintain architecture and control of it, the content inside the file is hashed. {file} or {file_path} refers to the name or the file path to create the blob object.
