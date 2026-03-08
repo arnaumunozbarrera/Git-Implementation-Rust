@@ -9,7 +9,12 @@ use sha1::{Sha1, Digest};
 
 // CLI Entry point
 fn main() {
-    println!("Hello, I'm Arnau and this will be my personal implementation of Git as a version controller with Rust! \n");
+    let title = fs::read_to_string("src/cli/title.txt")
+        .expect("[ERROR] Could not read ASCII inside file");
+    let subtitle = fs::read_to_string("src/cli/subtitle.txt")
+        .expect("[ERROR] Could not read ASCII inside file");
+
+    println!("{}\n{}", title, subtitle);
     
     let args: Vec<String> = env::args().collect();
 
