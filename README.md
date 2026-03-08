@@ -100,7 +100,7 @@ cd Git-Implementation-Rust
 ```
 ```
 
-If `requirements.txt` is not included, manually install:
+If `Cargo.toml` is not included, manually install:
 
 ```
 ```
