@@ -7,6 +7,9 @@ use std::{
 mod cli;
 mod utils;
 
+// Constant values
+const MIN_ARGS_LEN_CLI: usize = 4;
+
 // CLI Entry point
 fn main() {
     // Argument extraction from cli command (if available)
@@ -23,7 +26,7 @@ fn main() {
             }
             // Creation of cat-file
             "cat-file" => {
-                if args.len() >= 3 {
+                if args.len() >= MIN_ARGS_LEN_CLI {
                     let argument = &args[2];
                     let hash = &args[3].clone();
 
@@ -34,7 +37,7 @@ fn main() {
             }
             // Creation of hash-object
             "hash-object" => {
-                if args.len() >= 3 {
+                if args.len() >= MIN_ARGS_LEN_CLI {
                     let argument = &args[2];
                     let file_path = &args[3].clone();
 
@@ -49,7 +52,6 @@ fn main() {
                 println!("\t· init\n\t· cat-file\n\t· hash-object\n");
             }
         }
-
     } else {
         // Case: no command typed
         println!("[EXIT] No command typed.\n Try one of this list:");
