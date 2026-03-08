@@ -7,6 +7,7 @@ use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use sha1::{Sha1, Digest};
 
+// CLI Entry point
 fn main() {
     println!("Hello, I'm Arnau and this will be my personal implementation of Git as a version controller with Rust! \n");
     
