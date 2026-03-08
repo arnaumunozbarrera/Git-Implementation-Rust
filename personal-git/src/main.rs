@@ -1,6 +1,6 @@
 // Import libraries
 use std::{
-    env, fs::{self}
+    env
 };
 
 // Import functions

@@ -1,10 +1,10 @@
 // Import libraries
 use std::{
-    fs::{self}, io::{self, Read, Write}
+    fs::{self}, io::{Read}
 };
 use flate2::read::ZlibDecoder;
 
-pub fn read_file(path: &str) -> String {
+pub fn read_object(path: &str) -> String {
     let mut object = fs::File::open(path).expect("[WARN] Unable to open file from path:\n");
     let mut content: Vec<u8> = vec![];
     let mut extracted_content = String::new();

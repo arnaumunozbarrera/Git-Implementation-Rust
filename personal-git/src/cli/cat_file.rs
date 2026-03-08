@@ -1,9 +1,9 @@
 // Import libraries
 use std::{
-    fs::{self}, io::{self, Read, Write}
+    io::{self, Write}
 };
-use flate2::read::ZlibDecoder;
-use crate::utils::read_file;
+
+use crate::utils::read_object;
 
 pub fn cat_file_command(argument: &str, hash: &str) {
     // println!("[DEBUG] Argument typed: {}", argument);
@@ -17,7 +17,7 @@ pub fn cat_file_command(argument: &str, hash: &str) {
             // println!("[DEBUG] Folder name: {}, File name: {}", folder_name, file_name);
 
             let path = format!(".voor/objects/{folder_name}/{file_name}");
-            let extracted_content = read_file::read_file(&path);
+            read_object::read_object(&path);
             
             io::stdout().flush().unwrap();
         } else {
