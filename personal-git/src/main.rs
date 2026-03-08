@@ -1,6 +1,6 @@
 use core::hash;
 use std::{
-    env, fs::{self, File}, io::{self, Read, Write}, path::Path
+    env, fs::{self, File}, io::{self, Read, Write}, path::Path, ptr::null
 };
 use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
@@ -14,38 +14,46 @@ fn main() {
     let subtitle = fs::read_to_string("src/cli/subtitle.txt")
         .expect("[ERROR] Could not read ASCII inside file");
 
-    println!("{}\n{}", title, subtitle);
-    
+    println!("{}\n{}\n", title, subtitle);
+
+    // Argument extraction from cli command (if available)
     let args: Vec<String> = env::args().collect();
+    if args.len() > 1 {
+        // Case: there is a command
+        let command = &args[1];
 
-    let command = &args[1];
+        // Switch case: choose command response / behaviour
+        match command.as_str() {
+            // Initialization section of `.voor` folder
+            "init" => { 
+                init_command();
+            }
+            // Creation of cat-file
+            "cat-file" => {
+                let argument = &args[2];
+                let hash = &args[3].clone();
 
-    // Refactor of if-else to switch-case / match
-    match command.as_str() {
-        // Initialization section of `.voor` folder
-        "init" => { 
-            init_command();
-        }
-        // Creation of cat-file
-        "cat-file" => {
-            let argument = &args[2];
-            let hash = &args[3].clone();
+                cat_file_command(&argument, &hash);
+            }
+            // Creation of hash-object
+            "hash-object" => {
+                let argument = &args[2];
+                let file_path = &args[3].clone();
 
-            cat_file_command(&argument, &hash);
+                hash_object_command(&argument, &file_path);
+            }
+            // Default response for unknown command
+            _ => {
+                println!("[EXIT] Unknown command.\nTry one of this list:");
+                println!("\t· init\n\t· cat-file\n\t· hash-object\n");
+            }
         }
-        // Creation of hash-object
-        "hash-object" => {
-            let argument = &args[2];
-            let file_path = &args[3].clone();
 
-            hash_object_command(&argument, &file_path);
-        }
-        // Default response for unknown command
-        _ => {
-            println!("[INFO] Unknown command. Did you mean `init`?\n");
-        }
+    } else {
+        // Case: no command typed
+        println!("[EXIT] No command typed.\n Try one of this list:");
+        println!("\t· init\n\t· cat-file\n\t· hash-object\n");
     }
-    
 }
 
 fn init_command() {
