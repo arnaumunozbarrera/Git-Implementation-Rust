@@ -5,6 +5,7 @@ use std::{
 
 // Import functions
 mod cli;
+mod utils;
 
 // CLI Entry point
 fn main() {
