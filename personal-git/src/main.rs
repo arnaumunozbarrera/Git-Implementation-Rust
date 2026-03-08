@@ -8,13 +8,6 @@ mod cli;
 
 // CLI Entry point
 fn main() {
-    let title = fs::read_to_string("src/cli/title.txt")
-        .expect("[ERROR] Could not read ASCII inside file");
-    let subtitle = fs::read_to_string("src/cli/subtitle.txt")
-        .expect("[ERROR] Could not read ASCII inside file");
-
-    println!("{}\n{}\n", title, subtitle);
-
     // Argument extraction from cli command (if available)
     let args: Vec<String> = env::args().collect();
     if args.len() > 1 {
