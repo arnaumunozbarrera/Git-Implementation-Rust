@@ -73,6 +73,11 @@ fn main() {
 
                 cli::diff::diff_by_hash(&old_hash, &file_path);
             }
+            "add" => {
+                let file_path = &args[2].clone();
+
+                cli::add::add_by_hash(&file_path);
+            }
             // Default response for unknown command
             _ => {
                 println!("[EXIT] Unknown command.\nTry one of this list:");
