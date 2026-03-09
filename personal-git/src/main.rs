@@ -46,6 +46,33 @@ fn main() {
                     println!("[ERROR] Not enough arguments provided to execute the `hash-object` command");
                 }
             }
+            "diff" => {
+                // TODO: diff --staged || HEAD
+                // if args.len() == 3 {
+                //     let argument = &args[2];
+
+                //     if argument == "--staged" {
+
+                //     } else if argument == "HEAD" {
+                //         // HEAD
+                //     }
+                // } else if args.len() > 3 {
+                //     let ref1 = &args[3];
+                //     let ref4 = &args[4];
+
+                //     // TODO: first, implement diff for branches
+
+                //     // TODO: second, implement diff for commits0
+                // } else {
+                //     // Not prepared changes
+
+                // }
+
+                let old_hash = &args[2];
+                let file_path = &args[3].clone();
+
+                cli::diff::diff_by_hash(&old_hash, &file_path);
+            }
             // Default response for unknown command
             _ => {
                 println!("[EXIT] Unknown command.\nTry one of this list:");

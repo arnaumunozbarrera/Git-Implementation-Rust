@@ -10,7 +10,7 @@ pub fn init_command() {
     println!("{}\n{}\n", title, subtitle);
 
     if Path::new(".voor").exists() {
-        let paths = [".voor", ".voor/objects", ".voor/refs", ".voor/refs/heads", ".voor/refs/heads/master", ".voor/HEAD"];
+        let paths = [".voor", ".voor/objects", ".voor/refs", ".voor/refs/heads", ".voor/HEAD"];
 
         for path in paths {
             if !Path::new(path).exists() {

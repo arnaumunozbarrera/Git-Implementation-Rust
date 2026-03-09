@@ -2,7 +2,7 @@
 use std::fs;
 
 pub fn read_head() -> String {
-    fs::read_to_string(".voor/HEAD").expect("[ERROR] Unable to read HEAD");
+    fs::read_to_string(".voor/HEAD").expect("[ERROR] Unable to read HEAD")
 }
 
 pub fn get_head_ref() -> String {
@@ -27,7 +27,7 @@ pub fn read_head_target() -> String {
 pub fn update_ref(reference: &str, hash_content: &str) {
     let path = format!(".voor/{}", reference);
     
-    fs::write(path, format!("{}", hash)).expect("[ERROR] Unable to update ref");
+    fs::write(path, format!("{}", hash_content)).expect("[ERROR] Unable to update ref");
 }
 
 pub fn update_head_branch(branch: &str) {
