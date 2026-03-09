@@ -3,7 +3,7 @@ use std::{
     io::{self, Write}
 };
 
-use crate::utils::read_object;
+use crate::utils::file_object;
 
 pub fn cat_file_command(argument: &str, hash: &str) {
     // println!("[DEBUG] Argument typed: {}", argument);
@@ -17,7 +17,7 @@ pub fn cat_file_command(argument: &str, hash: &str) {
             // println!("[DEBUG] Folder name: {}, File name: {}", folder_name, file_name);
 
             let path = format!(".voor/objects/{folder_name}/{file_name}");
-            read_object::read_object(&path);
+            file_object::read_file(&path);
             
             io::stdout().flush().unwrap();
         } else {
