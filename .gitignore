@@ -21,3 +21,6 @@ target
 #.idea/
 
 .env
+
+.voor/
+/.voor/
