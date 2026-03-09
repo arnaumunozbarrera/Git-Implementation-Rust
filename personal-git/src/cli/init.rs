@@ -10,7 +10,16 @@ pub fn init_command() {
     println!("{}\n{}\n", title, subtitle);
 
     if Path::new(".voor").exists() {
-        println!("[INFO] `.voor` directory already initialized\n");
+        let paths = [".voor", ".voor/objects", ".voor/refs", ".voor/refs/heads", ".voor/refs/heads/master", ".voor/HEAD"];
+
+        for path in paths {
+            if !Path::new(path).exists() {
+                println!("[ERROR] `.voor` directory already initialized with errors\nDelete it and run `cargo run init` again");
+                return;
+            }
+        }
+
+        println!("[INFO] `.voor` directory already initialized successfully\n");
     } else {
         fs::create_dir(".voor").unwrap();
         fs::create_dir(".voor/objects").unwrap();
