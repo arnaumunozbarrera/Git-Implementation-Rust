@@ -1,29 +1,51 @@
 // Import libraries
-use std::{
-    fs::{self}, io::{Read}
-};
+use std::fs::File;
+use std::io::Read;
+
 use flate2::read::ZlibDecoder;
 
-pub fn read_file(path: &str) -> String {
-    let mut object = fs::File::open(path).expect("[WARN] Unable to open file from path:\n");
-    let mut content: Vec<u8> = vec![];
-    let mut extracted_content = String::new();
+pub fn read_object_bytes(path: &str) -> Vec<u8> {
+    let mut object =
+        File::open(path).expect("[ERROR] Unable to open object file");
 
-    object.read_to_end(&mut content).expect("[WARN] Unable to read content from file\n");
+    let mut compressed = Vec::new();
+    object
+        .read_to_end(&mut compressed)
+        .expect("[ERROR] Unable to read compressed object");
 
-    let mut decoder = ZlibDecoder::new(content.as_slice());
+    let mut decoder = ZlibDecoder::new(compressed.as_slice());
+    let mut decompressed = Vec::new();
 
-    decoder.read_to_string(&mut extracted_content).unwrap();
-    let split = extracted_content.split("\x00");
-    let extracted_content = split.last().unwrap();
+    decoder
+        .read_to_end(&mut decompressed)
+        .expect("[ERROR] Unable to decompress object");
 
-    let file_content = extracted_content
-        .split('\0')
-        .last()
-        .unwrap_or("")
-        .to_string();
+    decompressed
+}
 
-    println!("[DEBUG] Extracted file content: {}", file_content);
+pub fn extract_blob_content(object_bytes: &[u8]) -> &[u8] {
+    let null_pos = object_bytes
+        .iter()
+        .position(|&b| b == 0)
+        .expect("[ERROR] Invalid object format: missing header separator");
 
-    file_content
+    &object_bytes[null_pos + 1..]
+}
+
+pub fn read_blob_content(path: &str) -> Vec<u8> {
+    let object_bytes = read_object_bytes(path);
+    extract_blob_content(&object_bytes).to_vec()
+}
+
+pub fn print_blob_content(path: &str) {
+    let content = read_blob_content(path);
+
+    match std::str::from_utf8(&content) {
+        Ok(text) => {
+            print!("{}", text);
+        }
+        Err(_) => {
+            eprintln!("[ERROR] Blob content is binary, cannot print safely as UTF-8 text");
+        }
+    }
 }

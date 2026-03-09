@@ -14,7 +14,7 @@ pub fn init_command() {
     } else {
         fs::create_dir(".voor").unwrap();
         fs::create_dir(".voor/objects").unwrap();
-        fs::create_dir(".voor/ref").unwrap();
+        fs::create_dir(".voor/refs").unwrap();
         fs::write(".voor/HEAD", "ref: refs/heads/master\n").unwrap();
         
         println!("[INFO] `.voor` directory initialized successfully!\n");

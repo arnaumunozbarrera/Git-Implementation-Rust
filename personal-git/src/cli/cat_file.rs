@@ -17,7 +17,7 @@ pub fn cat_file_command(argument: &str, hash: &str) {
             // println!("[DEBUG] Folder name: {}, File name: {}", folder_name, file_name);
 
             let path = format!(".voor/objects/{folder_name}/{file_name}");
-            file_object::read_file(&path);
+            file_object::print_blob_content(&path);
             
             io::stdout().flush().unwrap();
         } else {

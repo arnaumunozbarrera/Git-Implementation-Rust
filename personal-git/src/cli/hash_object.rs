@@ -1,21 +1,25 @@
 // Import libraries
 use std::fs;
 
-use crate::utils::blob_object;
+use crate::utils::blob_object::{self, HashAlgorithm};
 
 pub fn hash_object_command(argument: &str, file_path: &str) {
-    if argument == "-w" {
-        // Read content from file_path
-        let extracted_content = fs::read(file_path).expect("[WARN] Unable to read content from file");
+    let algorithm = match argument {
+        "-w" | "--sha1" => HashAlgorithm::Sha1,
+        "--sha256" => HashAlgorithm::Sha256,
+        _ => {
+            println!("[INFO] Unknown argument. Use `-w`, `--sha1`, or `--sha256`\n");
+            return;
+        }
+    };
 
-        // Hash creation & apply blob format
-        let header = blob_object::get_header(&extracted_content);
-        let (hash, full) = blob_object::get_hash(&header, &extracted_content);
+    let extracted_content =
+        fs::read(file_path).expect("[WARN] Unable to read content from file");
 
-        // Compress & save inside `/objects`
-        let (dir, file) = hash.split_at(2);
-        blob_object::save_compressed_object(dir, file, &full);
-    } else {
-        println!("[INFO] Unknown argument. Did you mean `-w`?\n");
-    }
+    let (hash, full) = blob_object::get_hash(&extracted_content, algorithm);
+
+    let (dir, file) = hash.split_at(2);
+    blob_object::save_compressed_object(dir, file, &full);
+
+    println!("{}", hash);
 }
