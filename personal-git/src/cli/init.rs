@@ -10,7 +10,7 @@ pub fn init_command() {
     println!("{}\n{}\n", title, subtitle);
 
     if Path::new(".voor").exists() {
-        let paths = [".voor", ".voor/objects", ".voor/refs", ".voor/refs/heads", ".voor/HEAD"];
+        let paths = [".voor", ".voor/objects", ".voor/refs", ".voor/refs/heads", ".voor/HEAD", ".voor/.voorignore"];
 
         for path in paths {
             if !Path::new(path).exists() {
@@ -27,6 +27,7 @@ pub fn init_command() {
         fs::create_dir(".voor/refs/heads").unwrap();
         fs::write(".voor/refs/heads/master", "").unwrap();
         fs::write(".voor/HEAD", "ref: refs/heads/master").unwrap();
+        fs::write(".voor/.voorignore", "").unwrap();
         
         println!("[INFO] `.voor` directory initialized successfully!\n");
     }

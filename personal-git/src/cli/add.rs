@@ -19,7 +19,7 @@ pub fn add_all(root_path: &Path) {
             add_by_hash(&path);
         } 
         else if path.is_dir() {
-            add_all(&path); // recursion
+            add_all(&path); // Recursion
         }
     }
 }
