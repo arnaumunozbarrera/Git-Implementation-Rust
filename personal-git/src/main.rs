@@ -2,6 +2,8 @@
 use std::{
     env
 };
+use std::path::Path;
+use crate::cli::status::display_status;
 
 // Import functions
 mod cli;
@@ -74,9 +76,31 @@ fn main() {
                 cli::diff::diff_by_hash(&old_hash, &file_path);
             }
             "add" => {
-                let file_path = &args[2].clone();
+                if args.len() != 3 {
+                    println!("[EXIT] Unknown argument.\nTry one of these:");
+                    println!("\t· <file_name>\n\t· . (add all)\n");
+                    return;
+                }
 
-                cli::add::add_by_hash(&file_path);
+                let argument = &args[2];
+
+                if argument == "." {
+                    cli::add::add_all(std::path::Path::new("."));
+                    println!("\n [INFO] Folder staged successfully");
+
+                } else {
+                    cli::add::add_by_hash(std::path::Path::new(argument));
+                }
+            }
+            "status" => {
+                if args.len() != 2 {
+                    println!("[EXIT] Unknown argument.\nTry without one:");
+                    return;
+                }
+
+                let root_path = Path::new(".");
+
+                display_status(root_path);
             }
             // Default response for unknown command
             _ => {
