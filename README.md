@@ -155,3 +155,10 @@ cargo run add . (add all files within the workspace)
 ```
 
 This command tracks the current status of the files to the `index` file in assist to other commands such as `status`, `commit`...
+
+### Commit
+```
+cargo run commit -m {message}
+```
+
+This command creates a commit of the current state of the staged / modified files to be later included on the `push` feature for remote repos
