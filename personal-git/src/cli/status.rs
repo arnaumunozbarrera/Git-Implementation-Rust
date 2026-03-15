@@ -3,6 +3,7 @@ use std::path::Path;
 use ignore::WalkBuilder;
 
 use crate::utils::blob_object::{self, HashAlgorithm};
+use crate::utils::add;
 
 pub fn display_status(root_path: &Path) {
 
@@ -10,6 +11,8 @@ pub fn display_status(root_path: &Path) {
         .add_custom_ignore_filename(".voorignore")
         .ignore(false)
         .build();
+
+    let index = add::read_index();
 
     for entry in walker {
         let entry = entry.unwrap();
@@ -19,33 +22,31 @@ pub fn display_status(root_path: &Path) {
             continue;
         }
 
-        if path.is_file() {
+        if path.is_dir() {
+            continue;
+        }
+
+       let path_str = path.to_string_lossy();
+
+        if let Some(index_hash) = index.get(path_str.as_ref()) {
 
             let full = fs::read(path).unwrap();
+            let (current_hash, _) = blob_object::get_hash(&full, HashAlgorithm::Sha256);
 
-            let (hash, _) = blob_object::get_hash(&full, HashAlgorithm::Sha256);
-
-            let dir = &hash[..2];
-            let file = &hash[2..];
-
-            let object_path = Path::new(".voor")
-                .join("objects")
-                .join(dir)
-                .join(file);
-
-            if !object_path.exists() {
-                println!("Untracked: {}", path.display());
+            if &current_hash == index_hash {
+                println!("Tracked: {} (clean)", path.display());
             } else {
-
-                let old_bytes =
-                    crate::utils::file_object::read_blob_content(object_path.to_str().unwrap());
-
-                if old_bytes == full {
-                    println!("Tracked: {} (clean)", path.display());
-                } else {
-                    println!("Modified: {}", path.display());
-                }
+                println!("Modified: {}", path.display());
             }
+
+        } else {
+            println!("Untracked: {}", path.display());
         }
     }
+
+    for (path, _) in &index {
+    if !Path::new(path).exists() {
+        println!("Deleted: {}", path);
+    }
+}
 }

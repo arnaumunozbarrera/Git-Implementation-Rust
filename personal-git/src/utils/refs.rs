@@ -31,5 +31,5 @@ pub fn update_ref(reference: &str, hash_content: &str) {
 }
 
 pub fn update_head_branch(branch: &str) {
-    fs::write(".voor/HEAD", format!("ref: refs/heads/{}", branch)).expect("[ERROR] Unable to update HEAD");
+    fs::write(".voor/HEAD", format!("ref: refs/heads/{}", branch)).expect("[ERROR] Unable to update HEAD\n");
 }
