@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::Path;
+use ignore::WalkBuilder;
 
 use crate::cli::hash_object;
 
@@ -9,17 +10,20 @@ pub fn add_by_hash(path: &Path) {
 }
 
 pub fn add_all(root_path: &Path) {
-    let entries = fs::read_dir(root_path).unwrap();
+    let walker = WalkBuilder::new(root_path)
+        .add_custom_ignore_filename(".voorignore")
+        .build();
 
-    for entry in entries {
+    for entry in walker {
         let entry = entry.unwrap();
         let path = entry.path();
 
+        if path.starts_with(".voor") {
+            continue;
+        }
+
         if path.is_file() {
-            add_by_hash(&path);
-        } 
-        else if path.is_dir() {
-            add_all(&path); // Recursion
+            add_by_hash(path);
         }
     }
 }

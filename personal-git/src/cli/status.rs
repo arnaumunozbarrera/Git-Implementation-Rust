@@ -1,22 +1,30 @@
 use std::fs;
 use std::path::Path;
+use ignore::WalkBuilder;
 
-use crate::{cli::diff::diff_by_hash, utils::blob_object::{self, HashAlgorithm}};
+use crate::utils::blob_object::{self, HashAlgorithm};
 
 pub fn display_status(root_path: &Path) {
-    let entries = fs::read_dir(root_path).unwrap();
 
-    for entry in entries {
+    let walker = WalkBuilder::new(root_path)
+        .add_custom_ignore_filename(".voorignore")
+        .ignore(false)
+        .build();
+
+    for entry in walker {
         let entry = entry.unwrap();
         let path = entry.path();
 
-        if path.is_file() {
-            // Read file
-            let full = fs::read(&path).unwrap();
+        if path.starts_with(".voor") {
+            continue;
+        }
 
-            // Compute hash
+        if path.is_file() {
+
+            let full = fs::read(path).unwrap();
+
             let (hash, _) = blob_object::get_hash(&full, HashAlgorithm::Sha256);
-            // Split hash
+
             let dir = &hash[..2];
             let file = &hash[2..];
 
@@ -25,28 +33,19 @@ pub fn display_status(root_path: &Path) {
                 .join(dir)
                 .join(file);
 
-            // Check if object exists
             if !object_path.exists() {
                 println!("Untracked: {}", path.display());
             } else {
-                let old_bytes: Vec<u8> =
+
+                let old_bytes =
                     crate::utils::file_object::read_blob_content(object_path.to_str().unwrap());
 
                 if old_bytes == full {
-                    println!("Tracked: {}, not modified", path.display());
+                    println!("Tracked: {} (clean)", path.display());
                 } else {
-                    println!("Tracked changes in: {}", path.display());
-                    diff_by_hash(&hash, path.to_str().unwrap());
+                    println!("Modified: {}", path.display());
                 }
             }
-
-        } else if path.is_dir() {
-            // Avoid scanning .voor itself
-            if path.file_name().unwrap() == ".voor" {
-                continue;
-            }
-
-            display_status(&path);
         }
     }
 }
