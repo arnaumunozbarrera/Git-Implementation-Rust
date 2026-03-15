@@ -1,12 +1,15 @@
-use std::fs;
 use std::path::Path;
 use ignore::WalkBuilder;
 
 use crate::cli::hash_object;
+use crate::utils::add;
 
 pub fn add_by_hash(path: &Path) {
-    hash_object::hash_object_command("--sha256", path.to_str().unwrap());
-    println!("[INFO] Staged file: {}\n", path.display());
+    let hash = hash_object::hash_object_command("--sha256", path.to_str().unwrap());
+
+    add::write_index(&hash, path);
+
+    println!("[INFO] File staged to .voor/index: {}\n", path.display());
 }
 
 pub fn add_all(root_path: &Path) {

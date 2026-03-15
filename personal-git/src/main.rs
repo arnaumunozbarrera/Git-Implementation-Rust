@@ -86,8 +86,6 @@ fn main() {
 
                 if argument == "." {
                     cli::add::add_all(std::path::Path::new("."));
-                    println!("\n [INFO] Folder staged successfully");
-
                 } else {
                     cli::add::add_by_hash(std::path::Path::new(argument));
                 }

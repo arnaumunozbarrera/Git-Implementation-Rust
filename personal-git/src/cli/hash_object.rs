@@ -3,13 +3,13 @@ use std::fs;
 
 use crate::utils::blob_object::{self, HashAlgorithm};
 
-pub fn hash_object_command(argument: &str, file_path: &str) {
+pub fn hash_object_command(argument: &str, file_path: &str) -> String {
     let algorithm = match argument {
         "-w" | "--sha1" => HashAlgorithm::Sha1,
         "--sha256" => HashAlgorithm::Sha256,
         _ => {
             println!("[INFO] Unknown argument. Use `-w`, `--sha1`, or `--sha256`\n");
-            return;
+            return String::new();
         }
     };
 
@@ -22,4 +22,6 @@ pub fn hash_object_command(argument: &str, file_path: &str) {
     blob_object::save_compressed_object(dir, file, &full);
 
     println!("{}", hash);
+
+    hash
 }
