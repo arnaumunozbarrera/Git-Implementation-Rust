@@ -3,7 +3,7 @@ use std::path::Path;
 use ignore::WalkBuilder;
 
 use crate::utils::blob_object::{self, HashAlgorithm};
-use crate::utils::add;
+use crate::utils::index;
 
 pub fn display_status(root_path: &Path) {
 
@@ -12,7 +12,7 @@ pub fn display_status(root_path: &Path) {
         .ignore(false)
         .build();
 
-    let index = add::read_index();
+    let index = index::read_index();
 
     for entry in walker {
         let entry = entry.unwrap();

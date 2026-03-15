@@ -24,10 +24,10 @@ pub fn read_head_target() -> String {
         .to_string()
 }
 
+// Updates a reference file (e.g., HEAD or branch) to point to the commit hash
 pub fn update_ref(reference: &str, hash_content: &str) {
     let path = format!(".voor/{}", reference);
-    
-    fs::write(path, format!("{}", hash_content)).expect("[ERROR] Unable to update ref");
+    fs::write(path, hash_content).expect("[ERROR] Unable to update ref");
 }
 
 pub fn update_head_branch(branch: &str) {

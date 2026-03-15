@@ -100,6 +100,16 @@ fn main() {
 
                 display_status(root_path);
             }
+            "commit" => {
+                if args.len() != 4 {
+                    println!("[EXIT] Unknown argument.\nTry this one:");
+                    println!("\t· -m <commit_message>");
+                    return;
+                }
+
+                let message = &args[2];
+                cli::commit::commit(message);
+            }
             // Default response for unknown command
             _ => {
                 println!("[EXIT] Unknown command.\nTry one of this list:");
