@@ -130,3 +130,28 @@ cargo run hash-object -w {file or file_path}
 ```
 
 This command creates a blob object inside the `.voor/objects` structure to maintain architecture and control of it, the content inside the file is hashed. {file} or {file_path} refers to the name or the file path to create the blob object.
+
+### Diff (Only by hash right now)
+```
+cargo run diff {hash1} {hash2}
+```
+
+This command displays the differences/changes between two files referenced by their hashes.
+
+### Status
+```
+cargo run status
+```
+
+This command displays the file tracking procedure of the file repository indicated. This command allows ignoring references by using a custom made ignore file that is created within the initialization `.voorignore`.
+
+### Add
+```
+cargo run add {file_path}
+
+or
+
+cargo run add . (add all files within the workspace)
+```
+
+This command tracks the current status of the files to the `index` file in assist to other commands such as `status`, `commit`...
