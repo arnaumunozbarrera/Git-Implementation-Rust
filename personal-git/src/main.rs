@@ -64,7 +64,7 @@ fn main() {
 
                 //     // TODO: first, implement diff for branches
 
-                //     // TODO: second, implement diff for commits0
+                //     // TODO: second, implement diff for commits
                 // } else {
                 //     // Not prepared changes
 
@@ -101,13 +101,13 @@ fn main() {
                 display_status(root_path);
             }
             "commit" => {
-                if args.len() != 4 {
+                if args.len() != 4 || args[2] != "-m" {
                     println!("[EXIT] Unknown argument.\nTry this one:");
-                    println!("\t· -m <commit_message>");
+                    println!("\t· commit -m <commit_message>");
                     return;
                 }
 
-                let message = &args[2];
+                let message = &args[3];
                 cli::commit::commit(message);
             }
             // Default response for unknown command

@@ -1,5 +1,5 @@
-// Import libraries
 use std::fs;
+use std::path::Path;
 
 pub fn read_head() -> String {
     fs::read_to_string(".voor/HEAD").expect("[ERROR] Unable to read HEAD")
@@ -15,21 +15,48 @@ pub fn get_head_ref() -> String {
 }
 
 pub fn read_head_target() -> String {
-    let head_ref = get_head_ref();
-    let path = format!(".voor/{}", head_ref);
+    let head = read_head();
+    let trimmed = head.trim();
 
-    fs::read_to_string(path)
-        .unwrap_or_default()
-        .trim()
-        .to_string()
+    if let Some(head_ref) = trimmed.strip_prefix("ref: ") {
+        let path = format!(".voor/{}", head_ref.trim());
+
+        fs::read_to_string(path)
+            .unwrap_or_default()
+            .trim()
+            .to_string()
+    } else {
+        // Detached HEAD: HEAD itself stores the commit hash
+        trimmed.to_string()
+    }
 }
 
-// Updates a reference file (e.g., HEAD or branch) to point to the commit hash
+/// Updates a reference file (e.g. refs/heads/main) to point to a commit hash
 pub fn update_ref(reference: &str, hash_content: &str) {
-    let path = format!(".voor/{}", reference);
-    fs::write(path, hash_content).expect("[ERROR] Unable to update ref");
+    let path = format!(".voor/{}", reference.trim());
+
+    if let Some(parent) = Path::new(&path).parent() {
+        fs::create_dir_all(parent).expect("[ERROR] Unable to create ref directory");
+    }
+
+    fs::write(path, hash_content.trim()).expect("[ERROR] Unable to update ref");
+}
+
+/// Updates whatever HEAD currently points to:
+/// - if HEAD is symbolic, move that branch ref
+/// - if HEAD is detached, write the hash directly into HEAD
+pub fn update_head_target(hash_content: &str) {
+    let head = read_head();
+    let trimmed = head.trim();
+
+    if let Some(head_ref) = trimmed.strip_prefix("ref: ") {
+        update_ref(head_ref.trim(), hash_content);
+    } else {
+        fs::write(".voor/HEAD", hash_content.trim()).expect("[ERROR] Unable to update HEAD");
+    }
 }
 
 pub fn update_head_branch(branch: &str) {
-    fs::write(".voor/HEAD", format!("ref: refs/heads/{}", branch)).expect("[ERROR] Unable to update HEAD\n");
+    fs::write(".voor/HEAD", format!("ref: refs/heads/{}", branch.trim()))
+        .expect("[ERROR] Unable to update HEAD");
 }

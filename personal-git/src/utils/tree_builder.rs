@@ -1,91 +1,138 @@
+use crate::utils::blob_object::{get_hash, save_compressed_object, HashAlgorithm};
 use crate::utils::index;
+use crate::utils::refs;
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
-use sha1::{Sha1};
-use crate::utils::blob_object::{get_hash, HashAlgorithm, save_compressed_object}; 
 
+fn normalize_stored_path(path: &str) -> String {
+    let mut normalized = path.trim().replace('\\', "/");
 
-// Verifies that there are staged files before committing
-pub fn verify_staged_files() {
-    let index = index::read_index();
-    if index.is_empty() {
-        println!("No changes added to commit");
-        return;
+    while normalized.starts_with("./") {
+        normalized = normalized[2..].to_string();
+    }
+
+    normalized
+}
+
+fn build_parent_line() -> String {
+    let parent = refs::read_head_target();
+
+    if parent.is_empty() {
+        String::new()
+    } else {
+        format!("parent {}\n", parent)
     }
 }
 
-// Creates a commit object content and returns its SHA-1 hash
-pub fn create_commit_object(tree_hash: String, message: &str) -> String {
-    // Read parent commit from HEAD
-    let parent_hash = match fs::read_to_string(".voor/HEAD") {
-        Ok(p) if !p.trim().is_empty() => format!("parent {}\n", p.trim()),
-        _ => String::new(),
-    };
+/// Returns true if there are staged files, false otherwise.
+pub fn verify_staged_files() -> bool {
+    let index_map = index::read_index();
 
-    // Timestamp for author/committer
-    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)
-        .expect("Time went backwards").as_secs();
+    if index_map.is_empty() {
+        println!("No changes added to commit");
+        return false;
+    }
+
+    true
+}
+
+/// Creates and stores a commit object, returning its SHA-1 hash.
+pub fn create_commit_object(tree_hash: String, message: &str) -> String {
+    let parent_line = build_parent_line();
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs();
 
     let commit_content = format!(
         "tree {}\n{}author {} <{}> {}\ncommitter {} <{}> {}\n\n{}",
-        tree_hash,
-        parent_hash,
-        "Your Name", "you@example.com", timestamp,
-        "Arnau Muñoz Barrera", "arnaumunozbarrera@gmail.com", timestamp,
+        tree_hash.trim(),
+        parent_line,
+        "Your Name",
+        "you@example.com",
+        timestamp,
+        "Arnau Muñoz Barrera",
+        "arnaumunozbarrera@gmail.com",
+        timestamp,
         message
     );
 
-    // Compute the commit hash and get serialized content
-    let (commit_hash, full_commit_content) = get_hash(commit_content.as_bytes(), HashAlgorithm::Sha1);
+    let (commit_hash, full_commit_content) =
+        get_hash(commit_content.as_bytes(), HashAlgorithm::Sha1);
 
-    // Save the commit object (compressed) in the objects directory
     save_compressed_object("commit", &commit_hash, &full_commit_content);
 
-    // commit_hash now contains the SHA-1 hex string
     commit_hash
 }
 
-// Stores the commit object to .voor/objects
+/// Stores a specific commit object under the provided hash.
+/// Kept for compatibility/debug usage.
 pub fn store_commit_object(commit_hash: String, tree_hash: String, message: &str) {
-    let parent_hash = match fs::read_to_string(".voor/HEAD") {
-        Ok(p) if !p.trim().is_empty() => format!("parent {}\n", p.trim()),
-        _ => String::new(),
-    };
+    let parent_line = build_parent_line();
 
-    let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)
-        .expect("Time went backwards").as_secs();
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs();
 
     let commit_content = format!(
         "tree {}\n{}author {} <{}> {}\ncommitter {} <{}> {}\n\n{}",
-        tree_hash,
-        parent_hash,
-        "Your Name", "you@example.com", timestamp,
-        "Arnau Muñoz Barrera", "arnaumunozbarrera@gmail.com", timestamp,
+        tree_hash.trim(),
+        parent_line,
+        "Your Name",
+        "you@example.com",
+        timestamp,
+        "Arnau Muñoz Barrera",
+        "arnaumunozbarrera@gmail.com",
+        timestamp,
         message
     );
 
-    fs::write(format!(".voor/objects/{}", commit_hash), commit_content)
-        .expect("[ERROR] Unable to write commit object");
+    let (computed_hash, full_commit_content) =
+        get_hash(commit_content.as_bytes(), HashAlgorithm::Sha1);
+
+    if computed_hash != commit_hash.trim() {
+        eprintln!(
+            "[WARNING] Provided commit hash does not match computed hash. Writing provided hash anyway: {}",
+            commit_hash.trim()
+        );
+    }
+
+    save_compressed_object("commit", commit_hash.trim(), &full_commit_content);
 }
 
-// Clears the staging area
 pub fn clear_index() {
     fs::write(".voor/index", "").expect("[ERROR] Unable to clear index");
 }
 
-// Builds a tree object for all staged files and returns its SHA-1 hash
+/// Builds a tree object from the staged index and returns its SHA-1 hash.
+///
+/// Tree entry format:
+///     <blob_hash>\t<path>\n
+///
+/// Using '\t' instead of ' ' avoids breaking paths that contain spaces.
 pub fn build_tree_object() -> String {
-    let index = index::read_index();
+    let index_map = index::read_index();
+
+    // Assumes read_index() returns: path -> hash
+    let mut entries: Vec<(String, String)> = index_map
+        .into_iter()
+        .map(|(path, hash)| (normalize_stored_path(&path), hash.trim().to_string()))
+        .collect();
+
+    // Deterministic ordering is required so the same logical tree always hashes the same.
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+
     let mut tree_content = String::new();
 
-    for (hash, path) in index {
-        tree_content.push_str(&format!("{} {}\n", hash, path));
+    for (path, hash) in entries {
+        tree_content.push_str(&format!("{}\t{}\n", hash, path));
     }
 
-    // Compute tree hash and serialized content
-    let (tree_hash, full_tree_content) = get_hash(tree_content.as_bytes(), HashAlgorithm::Sha1);
+    let (tree_hash, full_tree_content) =
+        get_hash(tree_content.as_bytes(), HashAlgorithm::Sha1);
 
-    // Save the tree object compressed under "tree" folder
     save_compressed_object("tree", &tree_hash, &full_tree_content);
 
     tree_hash
