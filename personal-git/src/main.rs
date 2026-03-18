@@ -1,3 +1,4 @@
+use std::env::Args;
 // Import libraries
 use std::{
     env
@@ -109,6 +110,49 @@ fn main() {
 
                 let message = &args[3];
                 cli::commit::commit(message);
+            }
+            "branch" => {
+                let branch_name = &args[2];
+
+                if args.len() == 3 {
+                    cli::branch::create_branch(branch_name);
+                } else if args.len() == 4 {
+                    let argument = &args[3];
+
+                    if argument == "-D" {
+                        cli::branch::delete_branch(branch_name);
+                    } else {
+                        println!("[EXIT] Unknown argument.\nTry this one:");
+                        println!("\t· branch -D <branch_name>");
+                        return;
+                    }
+                } else {
+                    println!("[EXIT] Unknown argument.\nTry this one:");
+                    println!("\t· branch <branch_name>");
+                    return;
+                }
+            }
+            "checkout" => {
+
+                let branch_name = &args[2];
+
+                if args.len() == 3 {
+                    cli::checkout::checkout_to_branch(branch_name);
+                } else if args.len() == 4 {
+                    let argument = &args[3];
+
+                    if argument == "-b" {
+                        cli::checkout::create_branch_and_checkout(branch_name);
+                    } else {
+                        println!("[EXIT] Unknown argument.\nTry this one:");
+                        println!("\t· checkout -b <branch_name>");
+                        return;
+                    }
+                } else {
+                    println!("[EXIT] Unknown argument.\nTry this one:");
+                    println!("\t· branch <branch_name>");
+                    return;
+                }
             }
             // Default response for unknown command
             _ => {
