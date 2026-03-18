@@ -95,6 +95,16 @@ fn read_commit_tree(commit_hash: &str) -> HashMap<String, String> {
 }
 
 pub fn display_status(root_path: &Path) {
+    let head_content = fs::read_to_string(".voor/HEAD")
+        .expect("[ERROR] Failed to read HEAD");
+
+    let current_ref = head_content
+        .strip_prefix("ref: refs/heads/")
+        .expect("[ERROR] Invalid HEAD format")
+        .trim();
+    
+    println!("[INFO] On branch: {}\n\nFile status:", current_ref);
+
     let head_hash = refs::read_head_target();
     let commit_tree = read_commit_tree(&head_hash);
 
@@ -145,14 +155,14 @@ pub fn display_status(root_path: &Path) {
                 if index_hash == commit_hash {
                     if current_hash != *index_hash {
                         has_changes = true;
-                        println!("Modified: {} (not staged)", path_str);
+                        println!("\t+ Modified: {} (not staged)", path_str);
                     }
                 } else {
                     has_changes = true;
-                    println!("Staged: {} (changes to be committed)", path_str);
+                    println!("\t~ Staged: {} (changes to be committed)", path_str);
 
                     if current_hash != *index_hash {
-                        println!("Modified: {} (not staged)", path_str);
+                        println!("\t+ Modified: {} (not staged)", path_str);
                     }
                 }
             }
@@ -160,10 +170,10 @@ pub fn display_status(root_path: &Path) {
             // Staged new file
             (Some(index_hash), None) => {
                 has_changes = true;
-                println!("Staged: {} (new file staged)", path_str);
+                println!("\t~ Staged: {} (new file staged)", path_str);
 
                 if current_hash != *index_hash {
-                    println!("Modified: {} (not staged)", path_str);
+                    println!("\t+ Modified: {} (not staged)", path_str);
                 }
             }
 
@@ -171,14 +181,14 @@ pub fn display_status(root_path: &Path) {
             (None, Some(commit_hash)) => {
                 if current_hash != *commit_hash {
                     has_changes = true;
-                    println!("Modified: {} (not staged)", path_str);
+                    println!("\t+ Modified: {} (not staged)", path_str);
                 }
             }
 
             // Not tracked anywhere
             (None, None) => {
                 has_changes = true;
-                println!("Untracked: {}", path_str);
+                println!("\t? Untracked: {}", path_str);
             }
         }
     }
@@ -186,11 +196,11 @@ pub fn display_status(root_path: &Path) {
     for path in commit_tree.keys() {
         if !seen_files.contains(path) {
             has_changes = true;
-            println!("Deleted: {}", path);
+            println!("\t- Deleted: {}", path);
         }
     }
 
     if !has_changes {
-        println!("No changes to commit");
+        println!("\t= No changes to commit");
     }
 }

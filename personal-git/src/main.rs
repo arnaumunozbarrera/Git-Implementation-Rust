@@ -112,11 +112,14 @@ fn main() {
                 cli::commit::commit(message);
             }
             "branch" => {
-                let branch_name = &args[2];
 
-                if args.len() == 3 {
+                if args.len() == 2 {
+                    cli::branch::display_branches();
+                } else if args.len() == 3 {
+                    let branch_name = &args[2];
                     cli::branch::create_branch(branch_name);
                 } else if args.len() == 4 {
+                    let branch_name = &args[2];
                     let argument = &args[3];
 
                     if argument == "-D" {
@@ -133,13 +136,14 @@ fn main() {
                 }
             }
             "checkout" => {
-
-                let branch_name = &args[2];
-
                 if args.len() == 3 {
+                    let branch_name = &args[2];
                     cli::checkout::checkout_to_branch(branch_name);
                 } else if args.len() == 4 {
-                    let argument = &args[3];
+                    let argument = &args[2];
+                    let branch_name = &args[3];
+                    
+                    println!("[DEBUG] argument: {}", argument);
 
                     if argument == "-b" {
                         cli::checkout::create_branch_and_checkout(branch_name);
