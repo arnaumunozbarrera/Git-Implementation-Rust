@@ -5,6 +5,7 @@ use ignore::WalkBuilder;
 
 use crate::utils::blob_object::{self, HashAlgorithm};
 use crate::utils::index;
+use crate::cli::branch;
 
 pub fn add_by_hash(path: &Path) {
     let file_bytes = fs::read(path).expect("[ERROR] Unable to read file for staging");
@@ -23,6 +24,9 @@ pub fn add_by_hash(path: &Path) {
 }
 
 pub fn add_all(root_path: &Path) {
+    let current_branch = branch::get_current_branch();
+    println!("[INFO] On branch: {:?}\n\nFile status:", current_branch);
+
     let walker = WalkBuilder::new(root_path)
         .add_custom_ignore_filename(".voorignore")
         .build();

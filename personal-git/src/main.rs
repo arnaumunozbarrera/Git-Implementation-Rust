@@ -143,8 +143,6 @@ fn main() {
                     let argument = &args[2];
                     let branch_name = &args[3];
                     
-                    println!("[DEBUG] argument: {}", argument);
-
                     if argument == "-b" {
                         cli::checkout::create_branch_and_checkout(branch_name);
                     } else {

@@ -56,5 +56,5 @@ pub fn save_compressed_object(dir: &str, file: &str, full: &[u8]) {
     fs::write(format!(".voor/objects/{}/{}", dir, file), compressed)
         .expect("[ERROR] Unable to write object file");
 
-    println!("[INFO] Blob created successfully at folder: .voor/objects/{}", dir);
+    // println!("[INFO] Blob created successfully at folder: .voor/objects/{}", dir);
 }

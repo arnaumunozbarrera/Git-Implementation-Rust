@@ -1,6 +1,17 @@
 use std::fs;
 use std::path::Path;
 
+pub fn get_current_branch() -> String {
+    let head_content = fs::read_to_string(".voor/HEAD")
+        .expect("[ERROR] Failed to read HEAD");
+
+    head_content
+        .strip_prefix("ref: refs/heads/")
+        .expect("[ERROR] Invalid HEAD format")
+        .trim()
+        .to_string()
+}
+
 pub fn display_branches() {
     if !Path::new(".voor/refs/heads").exists() {
         println!("[INFO] No branches found");
@@ -8,7 +19,7 @@ pub fn display_branches() {
     }
 
     // Read HEAD to know current branch
-    let head_content = fs::read_to_string(".voor/refs/HEAD")
+    let head_content = fs::read_to_string(".voor/HEAD")
         .expect("[ERROR] Failed to read HEAD");
 
     let current_branch = head_content
