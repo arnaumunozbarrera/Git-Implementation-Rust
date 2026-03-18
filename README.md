@@ -22,9 +22,11 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 ---
 
 ## Objectives
--  
--  
--  
+- OB0 - **Development of a version control software:** in order to gain a deeper understanding of how coordination systems operate and manage simultaneous, collaborative work across shared workspaces, with the aim of offering a more tailored alternative for specific personal use cases.
+-  OB1 - **Develop a functional system:** a software system that enables the execution of version-control operations in collaborative environments, both in local and remote workspaces.
+-  OB3 **Develop an analytical interface:** design and build a system focused on analytically visualising repository status through dashboards and visual elements, enabling an intuitive understanding between the user and the system.
+- OB4 **Provide relevant metrics:** provide the user with relevant metrics and indicative, dynamic visualisations that improve both capability and ease of decision-making regarding project evolution and repository activity.
+- OB5 **Explore the viability of an alternative solution:** create a proprietary implementation as an alternative to traditional version-control systems, from a modern technical and architectural perspective, for a more user-adapted experience.
 
 ---
 
@@ -46,17 +48,20 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 
 ## Core Features
 
--  
--  
--  
+-  Repository descovery
+-  Command line
+-  Future: remote repos
+-  Future: API exposure
+-  Future: Metrics
+-  Future: Analytic UI / Dashboards
 
 ---
 
 ## Tech Stack
 
 - **Language:** Rust  
--  
--  
+- **Database:** Supabase
+- **Frontend:** React
 
 ---
 
@@ -66,11 +71,15 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 /
 ├── backend/        # Core VCS engine
 │   ├── src/
+│   │    ├── main.rs
+│   │    ├── cli
+│   │    ├── utils
+│   │    └── tests  
 │   └── Cargo.toml
 │
 ├── frontend/       # CLI and/or GUI interface
 │   ├── src/
-│   └── Cargo.toml
+│   └── TBD
 │
 ├── docs/           # Design documentation and diagrams
 ├── tests/          # Integration and unit tests
@@ -90,20 +99,22 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 
 ## Clone the repository  
 
-```
-git clone https://github.com/arnaumunozbarrera/Git-Implementation-Rust.git
-cd Git-Implementation-Rust
-```
+``` git clone https://github.com/arnaumunozbarrera/Git-Implementation-Rust.git ```
+
+``` cd Git-Implementation-Rust ```
 
 ## Install dependencies  
 
-```
-```
+``` cargo clean ``` # Remove previous dependencies  
+
+``` cargo build ``` 
 
 If `Cargo.toml` is not included, manually install:
 
-```
-```
+``` flate2 = "1.0" ```
+``` sha1 = "0.10.6" ```
+``` sha2 = "0.10" ```
+``` ignore = "0.4" ```
 
 ## Run the project  
 
