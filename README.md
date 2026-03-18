@@ -162,3 +162,32 @@ cargo run commit -m {message}
 ```
 
 This command creates a commit of the current state of the staged / modified files to be later included on the `push` feature for remote repos
+
+### Status
+```
+cargo run status
+```
+
+This command displays the actual status of the repository: modified, staged, deleted & commit files. This command also displays the current development branch at the top by cli.
+
+### Branch
+```
+cargo run branch # Display current branches available
+
+or
+
+cargo run branch <branch_name> # Create branch
+
+or
+
+cargo run branch -D <branch_name> # Delete branch 
+```
+
+### Checkout
+```
+cargo run checkout <branch_name> # Swap to branch
+
+or
+
+cargo run checkout -b <branch_name> # Create branch & auto-checkout 
+```
