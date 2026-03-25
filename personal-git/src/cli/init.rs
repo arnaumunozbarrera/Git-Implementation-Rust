@@ -28,7 +28,7 @@ pub fn init_command() {
         fs::write(".voor/refs/heads/master", "").unwrap();
         fs::write(".voor/HEAD", "ref: refs/heads/master").unwrap();
         fs::write(".voor/index", "").unwrap();
-        fs::write(".voor/.voorignore", "").unwrap();
+        fs::write(".voorignore", ".env\n\n.voor/\n/.voor/\n").unwrap();
         
         println!("[INFO] `.voor` directory initialized successfully!\n");
     }
