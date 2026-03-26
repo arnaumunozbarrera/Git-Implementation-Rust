@@ -1,18 +1,14 @@
 use crate::api::clients::supabase::SupabaseClient;
 use crate::api::models::User;
 
-pub async fn get_users(
+pub async fn get_all_users(
     client: &SupabaseClient,
-) -> Result<Vec<User>, reqwest::Error> {
+) -> Result<Vec<User>, sqlx::Error> {
+    let users = sqlx::query_as::<_, User>(
+        "SELECT * FROM users"
+    )
+    .fetch_all(&client.pool)
+    .await?;
 
-    let url = format!("{}/rest/v1/users", client.base_url);
-
-    let res = client.client
-        .get(url)
-        .send()
-        .await?
-        .json::<Vec<User>>()
-        .await?;
-
-    Ok(res)
+    Ok(users)
 }

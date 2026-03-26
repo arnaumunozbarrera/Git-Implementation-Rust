@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct Branch {
     pub id: String,
     pub repo_id: String,

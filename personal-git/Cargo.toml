@@ -14,3 +14,4 @@ reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dotenvy = "0.15"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "macros"] }

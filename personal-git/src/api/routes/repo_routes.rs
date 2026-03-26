@@ -1,14 +1,17 @@
-use axum::{extract::State, Json};
+use axum::{
+    extract::State,
+    http::StatusCode,
+    Json,
+};
 use crate::api::clients::supabase::SupabaseClient;
-use crate::api::services::repo_service;
+use crate::api::models::Repository;
+use crate::api::services::repo_service::get_all_repos;
 
 pub async fn get_repos(
     State(client): State<SupabaseClient>,
-) -> Json<serde_json::Value> {
-
-    let repos = repo_service::get_all_repos(&client)
-        .await
-        .unwrap();
-
-    Json(serde_json::json!(repos))
+) -> Result<Json<Vec<Repository>>, StatusCode> {
+    match get_all_repos(&client).await {
+        Ok(repos) => Ok(Json(repos)),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
 }

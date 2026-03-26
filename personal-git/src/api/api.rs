@@ -14,7 +14,14 @@ use crate::api::routes::health_routes::get_health;
 pub async fn api() {
     dotenv().ok();
 
-    let client = SupabaseClient::new();
+    let client = SupabaseClient::new().await;
+
+    client
+        .healthcheck()
+        .await
+        .expect("Database healthcheck failed");
+
+    println!("[INFO] Database connection OK");
 
     let app = Router::new()
         .route("/health", get(get_health))
