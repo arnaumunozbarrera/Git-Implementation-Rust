@@ -1,8 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Star {
-    pub user_id: String,
-    pub repo_id: String,
+pub struct Tree {
+    pub hash: String,
     pub created_at: String,
 }

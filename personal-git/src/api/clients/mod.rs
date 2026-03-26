@@ -1,1 +1,1 @@
-pub mod SupabaseClient;
+pub mod supabase;

@@ -1,10 +1,12 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct Branch {
+pub struct TreeEntry {
     pub id: String,
-    pub repo_id: String,
+    pub tree_hash: String,
     pub name: String,
-    pub last_commit_hash: Option<String>,
+    pub r#type: String,
+    pub hash: String,
+    pub mode: String,
     pub created_at: String,
 }

@@ -9,6 +9,7 @@ use crate::cli::status::display_status;
 // Import functions
 mod cli;
 mod utils;
+mod api;
 
 // Constant values
 const MIN_ARGS_LEN_CLI: usize = 4;
@@ -155,6 +156,11 @@ fn main() {
                     println!("\t· branch <branch_name>");
                     return;
                 }
+            }
+            "serve" => {
+                // Run HTTP server
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                rt.block_on(api::api::api());
             }
             // Default response for unknown command
             _ => {
