@@ -116,10 +116,10 @@ If `Cargo.toml` is not included, manually install:
 ``` sha2 = "0.10" ```
 ``` ignore = "0.4" ```
 
-## Run the project  
+## Run the project as a CLI program 
 
 ```
-cd .\personal-git\
+cd .\backend\personal-git\
 ```
 ### Initialize `.voor` 
 ```
