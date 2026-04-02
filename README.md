@@ -70,7 +70,7 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 ```
 /
 ├── backend/        # Core VCS engine
-│   ├── src/
+│   ├── personal-git/src/
 │   │    ├── main.rs
 │   │    ├── cli
 │   │    ├── utils
@@ -78,7 +78,7 @@ The goal is not to replicate Git entirely, but to deeply understand and re-engin
 │   └── Cargo.toml
 │
 ├── frontend/       # CLI and/or GUI interface
-│   ├── src/
+│   ├── personal-git/src/
 │   └── TBD
 │
 ├── docs/           # Design documentation and diagrams
