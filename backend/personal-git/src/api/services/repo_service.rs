@@ -87,8 +87,25 @@ pub async fn init_repo(
     .await
     .map_err(|error| format!("[ERROR] Failed to initialize repository '{}': {}", repo_id, error))?;
 
+    sqlx::query(
+        "INSERT INTO branches (repo_id, name, last_commit_hash) VALUES ($1, $2, $3)",
+    )
+    .bind(repo_id)
+    .bind(default_branch)
+    .bind(Option::<String>::None)
+    .execute(&client.pool)
+    .await
+    .map_err(|error| format!(
+        "[ERROR] Failed to create default branch '{}' for repository '{}': {}",
+        default_branch, repo_id, error
+    ))?;
+
     Ok(InitRepoResponse {
         message: format!("Initialized remote repository '{}'", repo_id),
         repo_id: repo_id.to_string(),
+        database_action: Some(format!(
+            "Created repository '{}' with default branch '{}'",
+            repo_id, default_branch
+        )),
     })
 }

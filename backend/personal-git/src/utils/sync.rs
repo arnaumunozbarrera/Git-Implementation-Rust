@@ -21,6 +21,7 @@ pub struct EncodedObject {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PushRequest {
     pub repo_id: String,
+    pub user_id: String,
     pub branch: String,
     pub head: String,
     pub objects: Vec<EncodedObject>,
@@ -36,6 +37,7 @@ pub struct PushResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PullRequest {
     pub repo_id: String,
+    pub user_id: String,
     pub branch: String,
 }
 
@@ -45,6 +47,22 @@ pub struct PullResponse {
     pub head: String,
     pub objects: Vec<EncodedObject>,
     pub database_action: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncDbRequest {
+    pub repo_id: String,
+    pub user_id: String,
+    pub branch: String,
+    pub head: String,
+    pub objects: Vec<EncodedObject>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncDbResponse {
+    pub message: String,
+    pub database_action: Option<String>,
+    pub branch_status: Option<String>,
 }
 
 pub fn repo_id_from_cwd() -> Result<String, String> {

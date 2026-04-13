@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use crate::utils::sync::EncodedObject;
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct Repository {
@@ -27,10 +28,13 @@ pub struct InitRepoRequest {
     pub readme_path: Option<String>,
     pub tags: Option<Vec<String>>,
     pub theme: Option<serde_json::Value>,
+    pub head: Option<String>,
+    pub objects: Option<Vec<EncodedObject>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct InitRepoResponse {
     pub message: String,
     pub repo_id: String,
+    pub database_action: Option<String>,
 }

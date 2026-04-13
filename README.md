@@ -202,3 +202,427 @@ or
 
 cargo run checkout -b <branch_name> # Create branch & auto-checkout 
 ```
+
+## Push/Pull
+ 
+- `remote <url>` stores the remote URL in `.voor/config`.
+- `POST /repos/init` creates the repository row in the remote database before the first database-backed sync.
+- `init-remote <user_id> [branch]` initializes the remote database entry for the current local repo, stores `repo_id` and `user_id` in `.voor/config`, and syncs existing local objects if the branch already has commits.
+- `push [branch]` collects the branch head commit plus all related commits, trees, and blobs, compresses them, base64-encodes them, and sends them to `/push`.
+- `push` now also parses incoming objects on the server and upserts `blobs`, `trees`, `tree_entries`, `commits`, `commits_metadata`, `branches`, and `repo_access_logs`.
+- `pull [branch]` requests the latest branch head plus all related objects from `/pull`, saves them locally, updates refs, and restores the working directory if the pulled branch is checked out.
+- `sync-db [branch] [user_id]` re-scans the local branch head and replays missing database state into the remote without requiring a new commit.
+- The CLI now prints the server-side database sync result for both `push` and `pull`.
+- The server returns explicit status codes for remote repository initialization and uses non-fatal database logging during `push` and `pull`.
+
+## Remote Repository Initialization API
+
+Use this endpoint once per repository before expecting `repo_access_logs` inserts to succeed.
+
+### Endpoint
+
+```text
+POST /repos/init
+```
+
+### Request body
+
+```json
+{
+  "repo_id": "personal-git",
+  "name": "personal-git",
+  "owner_id": "550e8400-e29b-41d4-a716-446655440000",
+  "default_branch": "master",
+  "is_private": false,
+  "description": "Personal Git implementation in Rust",
+  "readme_path": "README.md",
+  "tags": ["rust", "git"],
+  "theme": null
+}
+```
+
+Required fields:
+
+- `repo_id`
+- `name`
+- `owner_id`
+- `default_branch`
+- `is_private`
+
+Notes:
+
+- `repo_id` should match the local folder name because sync derives the repository id from the current working directory.
+- `owner_id` must already exist in `public.users`.
+- The endpoint creates a row in `public.repositories` and creates the default branch in `public.branches`.
+- The current CLI command `init-remote` calls this endpoint for you and then runs `sync-db` automatically if the branch already has commits.
+
+### Example request
+
+PowerShell:
+
+```powershell
+$body = @{
+  repo_id = "personal-git"
+  name = "personal-git"
+  owner_id = "550e8400-e29b-41d4-a716-446655440000"
+  default_branch = "master"
+  is_private = $false
+  description = "Personal Git implementation in Rust"
+  readme_path = "README.md"
+  tags = @("rust", "git")
+  theme = $null
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+  -Method Post `
+  -Uri "http://localhost:3000/repos/init" `
+  -ContentType "application/json" `
+  -Body $body
+```
+
+Success response:
+
+```json
+{
+  "message": "Initialized remote repository 'personal-git'",
+  "repo_id": "personal-git",
+  "database_action": "Created repository 'personal-git' with default branch 'master'"
+}
+```
+
+### Error management
+
+- `400 Bad Request`: one or more required fields are missing.
+- `404 Not Found`: `owner_id` does not exist in `public.users`.
+- `409 Conflict`: the repository already exists in `public.repositories`.
+- `503 Service Unavailable`: `SUPABASE_URL` is not configured or the server started without a DB client.
+- `500 Internal Server Error`: unexpected database failure while validating or inserting the repository.
+
+### Logs
+
+Server logs:
+
+- Success: `[INFO] Initializing remote repository 'personal-git' for owner '...'`
+- Success: `[INFO] Initialized remote repository 'personal-git'`
+- Failure: `[WARN] [ERROR] Owner '...' not found`
+- Failure: `[WARN] [ERROR] Repository 'personal-git' already exists`
+
+Client sync logs after initialization:
+
+- `push` and `pull` still succeed even if database logging cannot be written.
+- `push` stores each incoming object in the filesystem object store and then mirrors supported object types into the database:
+  blobs: `hash`, binary `content`, `size`
+  trees: `hash`
+  tree entries: `tree_hash`, `name`, `type`, `mode`, `hash`
+  commits: `hash`, `tree_hash`, `parent_hash`, request `user_id`, commit `message`
+  commit metadata: `repo_id`, `commit_hash`, request `user_id`, `message`, calculated `additions`, `deletions`
+  branches: update existing `last_commit_hash` or create the branch if missing
+- When the DB is empty or partially seeded, the CLI now prints a descriptive skip reason such as:
+  `Skipped database log: repository 'personal-git' not found in database`
+  or
+  `Skipped database log: user '...' not found in database`
+
+## Push/Pull Test Plan
+
+Use three folders with the same repository name for the full test:
+
+- `remote repo`: runs `cargo run -- serve`
+- `local repo A`: creates commits and pushes them
+- `local repo B`: pulls and verifies them
+
+Important:
+
+- `repo_id` is derived from the current folder name, so all three folders must end with the same directory name.
+- The database log is only written when both `SUPABASE_URL` and `SYNC_LOG_USER_ID` are available to the server process.
+- `repo_access_logs` also requires matching rows in `public.users` and `public.repositories`.
+
+### 1. Prepare the remote repository folder
+
+Create a folder that will act as the remote repository and move into `backend/personal-git`:
+
+```powershell
+cargo run -- init
+```
+
+Expected result:
+
+- `.voor` is created in the remote repository.
+
+### 2. Configure database logging for the server
+
+Set the variables before starting the server. Put them in `backend/personal-git/.env` or export them in the terminal:
+
+```powershell
+$env:SUPABASE_URL = "<your_supabase_postgres_url>"
+$env:SYNC_LOG_USER_ID = "<existing_user_id>"
+$env:PORT = "3000"
+```
+
+Expected result:
+
+- `SUPABASE_URL` allows the server to connect to Supabase.
+- `SYNC_LOG_USER_ID` is the user id written into `repo_access_logs`.
+
+### 3. Seed the owner in the database
+
+If `public.users` is empty, create the owner before calling `/repos/init`:
+
+```sql
+insert into public.users (id, username, email)
+values (
+  '550e8400-e29b-41d4-a716-446655440000',
+  'arnau',
+  'arnau@example.com'
+);
+```
+
+Expected result:
+
+- The owner exists in `public.users`.
+- `SYNC_LOG_USER_ID` can point to this same id.
+
+### 4. Start the remote server
+
+```powershell
+cargo run -- serve
+```
+
+Default server URL:
+
+```text
+http://localhost:3000
+```
+
+Expected result:
+
+- The terminal prints `[INFO] Database connection OK` when Supabase is reachable.
+- The terminal prints `[INFO] Server running on 127.0.0.1:3000`.
+
+### 5. Prepare local repository A
+
+In the first local working repository:
+
+```powershell
+cargo run -- init
+cargo run -- remote http://localhost:3000
+```
+
+Check that `.voor/config` contains:
+
+```ini
+[remote "origin"]
+url = http://localhost:3000
+```
+
+Expected result:
+
+- Local repo A is initialized.
+- The remote URL is stored in `.voor/config`.
+
+### 6. Initialize the repository in the remote database
+
+Run the CLI bootstrap command from local repository A:
+
+```powershell
+cargo run -- init-remote 550e8400-e29b-41d4-a716-446655440000
+```
+
+Expected result:
+
+- A row is created in `public.repositories`.
+- A default `master` branch is created in `public.branches`.
+- `.voor/config` stores the generated mapping:
+
+```ini
+[remote "origin"]
+url = http://localhost:3000
+repo_id = personal-git
+user_id = 550e8400-e29b-41d4-a716-446655440000
+```
+
+- If the branch already has commits, the command also pushes object state into the DB using `sync-db`.
+
+### 7. Create data in local repository A
+
+```powershell
+Set-Content hello.txt "hello from local A"
+cargo run -- add hello.txt
+cargo run -- commit -m "first sync commit"
+```
+
+Expected result:
+
+- A new blob, tree, and commit are created under `.voor/objects`.
+- `.voor/refs/heads/master` points to the new commit hash.
+
+### 8. Push from local repository A
+
+```powershell
+cargo run -- push
+```
+
+Expected result:
+
+- The current branch head is read from `.voor/refs/heads/master`.
+- The latest commit and all related objects are sent to `/push`.
+- The server parses incoming blob/tree/commit objects and mirrors them into the database before updating branch state and writing the push log.
+- The CLI prints `Pushed branch 'master' at <hash>`.
+- The CLI prints `Sent <n> objects`.
+- The CLI prints one database status line:
+  `Synced <x> blobs, <y> trees, <z> commits into database; ...`
+  or
+  `Skipped database log: ...`
+
+### 9. Verify push in the database
+
+Run this query in Supabase SQL Editor or any PostgreSQL client connected to the same database:
+
+```sql
+select action, repo_id, user_id, metadata, created_at
+from repo_access_logs
+where action = 'push'
+order by created_at desc
+limit 5;
+```
+
+Expected result:
+
+- A new `push` row exists for the repository.
+- `metadata` contains the branch name, head commit hash, and object count.
+
+### 10. Prepare local repository B
+
+In a second local repository:
+
+```powershell
+cargo run -- init
+cargo run -- remote http://localhost:3000
+```
+
+Expected result:
+
+- Local repo B is initialized and points to the same remote.
+
+### 11. Pull into local repository B
+
+```powershell
+cargo run -- pull master
+```
+
+Expected result:
+
+- Objects are downloaded from `/pull`.
+- Received objects are written into `.voor/objects`.
+- `.voor/refs/heads/master` is updated to the pulled commit.
+- If `master` is the checked out branch, the working directory is restored from the pulled tree.
+- The CLI prints `Received <n> objects`.
+- The CLI prints one database status line:
+  `Logged pull action into repo_access_logs`
+  or
+  `Skipped database log: ...`
+
+### 12. Verify pulled content in local repository B
+
+```powershell
+Get-Content hello.txt
+cargo run -- status
+```
+
+Expected result:
+
+- `hello.txt` exists with the content from local repository A.
+- `status` shows no pending changes if nothing was edited after pull.
+
+### 13. Verify pull in the database
+
+```sql
+select action, repo_id, user_id, metadata, created_at
+from repo_access_logs
+where action = 'pull'
+order by created_at desc
+limit 5;
+```
+
+Expected result:
+
+- A new `pull` row exists for the repository.
+- `metadata` contains the branch name, head commit hash, and object count.
+
+### 14. Test branch-specific push/pull
+
+In local repository A:
+
+```powershell
+cargo run -- checkout -b feature-sync
+Set-Content feature.txt "branch content"
+cargo run -- add feature.txt
+cargo run -- commit -m "feature commit"
+cargo run -- push feature-sync
+```
+
+In local repository B:
+
+```powershell
+cargo run -- branch feature-sync
+cargo run -- checkout feature-sync
+cargo run -- pull feature-sync
+```
+
+Expected result:
+
+- The remote stores and serves branch-specific heads.
+- Pull updates `refs/heads/feature-sync`.
+- Checkout/pull restores `feature.txt` into the working tree.
+- The database records one `push` and one `pull` for `feature-sync`.
+
+## Related Checks
+
+### Verify object storage layout
+
+After `add` or `commit`, inspect:
+
+```powershell
+Get-ChildItem .voor\objects -Recurse
+```
+
+You should see objects stored by hash prefix, for example:
+
+```text
+.voor/objects/ab/cdef...
+```
+
+### Verify commit and tree objects exist
+
+```powershell
+Get-Content .voor\refs\heads\master
+cargo run -- cat-file -p <blob_hash>
+```
+
+Notes:
+
+- `cat-file -p` currently prints blob contents.
+- Trees and commits are stored with correct headers internally even though there is no dedicated pretty-printer yet.
+
+### Missing branch error
+
+```powershell
+cargo run -- pull branch-that-does-not-exist
+```
+
+Expected result:
+
+- The command returns an error for the missing branch.
+
+### Missing object error
+
+If the remote branch points to an object that is not present on the server, `/pull` should fail with a missing object error.
+
+## Notes
+
+- The sync flow currently identifies the repository by the working directory name on client and server.
+- The server keeps exact objects in its own `.voor/objects` store so commit hashes remain stable during push/pull.
+- `/repos`, `/users`, and `/repos/init` depend on `SUPABASE_URL`. Sync routes can run without it, but database logging will be skipped if Supabase is not configured.
+- `/sync-db` also depends on `SUPABASE_URL` because it validates and writes repository state into PostgreSQL.
+- `repo_access_logs` is best-effort. Failed inserts no longer turn a successful `push` or `pull` into an HTTP error.
+- `push` and `sync-db` require a `user_id`. The CLI resolves it from `.voor/config` first and falls back to `SYNC_LOG_USER_ID`.
+- `push`, `pull`, and `sync-db` now expose the database sync or logging result directly in the CLI output.

@@ -6,7 +6,9 @@ use axum::{
 
 use crate::api::api::AppState;
 use crate::api::services::sync_service;
-use crate::utils::sync::{PullRequest, PullResponse, PushRequest, PushResponse};
+use crate::utils::sync::{
+    PullRequest, PullResponse, PushRequest, PushResponse, SyncDbRequest, SyncDbResponse,
+};
 
 pub async fn push_branch(
     State(state): State<AppState>,
@@ -28,10 +30,22 @@ pub async fn pull_branch(
         .map_err(classify_error)
 }
 
+pub async fn sync_db(
+    State(state): State<AppState>,
+    Json(payload): Json<SyncDbRequest>,
+) -> Result<Json<SyncDbResponse>, (StatusCode, String)> {
+    sync_service::sync_db(state.client.as_ref(), payload)
+        .await
+        .map(Json)
+        .map_err(classify_error)
+}
+
 fn classify_error(message: String) -> (StatusCode, String) {
     let status = if message.contains("Missing branch") || message.contains("Missing object") {
         StatusCode::NOT_FOUND
-    } else if message.contains("repo") {
+    } else if message.contains("not found") {
+        StatusCode::NOT_FOUND
+    } else if message.contains("Missing") || message.contains("Unknown repo") {
         StatusCode::BAD_REQUEST
     } else {
         StatusCode::INTERNAL_SERVER_ERROR

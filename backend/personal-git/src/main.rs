@@ -105,6 +105,18 @@ fn main() {
                 return;
             }
         }
+        "init-remote" => {
+            if args.len() == 3 {
+                cli::remote_server::init_remote(&args[2], None);
+            } else if args.len() == 4 {
+                cli::remote_server::init_remote(&args[2], Some(&args[3]));
+            } else {
+                println!("[EXIT] Unknown argument.\nTry one of these:");
+                println!("\t· init-remote <user_id>");
+                println!("\t· init-remote <user_id> <branch_name>");
+                return;
+            }
+        }
         "push" => {
             if args.len() == 2 {
                 let branch_name = cli::branch::get_current_branch();
@@ -128,6 +140,21 @@ fn main() {
                 println!("[EXIT] Unknown argument.\nTry one of these:");
                 println!("\t· pull");
                 println!("\t· pull <branch_name>");
+                return;
+            }
+        }
+        "sync-db" => {
+            if args.len() == 2 {
+                cli::remote_server::sync_db(None, None);
+            } else if args.len() == 3 {
+                cli::remote_server::sync_db(Some(&args[2]), None);
+            } else if args.len() == 4 {
+                cli::remote_server::sync_db(Some(&args[2]), Some(&args[3]));
+            } else {
+                println!("[EXIT] Unknown argument.\nTry one of these:");
+                println!("\t· sync-db");
+                println!("\t· sync-db <branch_name>");
+                println!("\t· sync-db <branch_name> <user_id>");
                 return;
             }
         }

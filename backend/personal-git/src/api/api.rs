@@ -8,7 +8,7 @@ use std::env;
 
 use crate::api::clients::supabase::SupabaseClient;
 use crate::api::routes::repo_routes::{get_repos, init_repo};
-use crate::api::routes::sync_routes::{pull_branch, push_branch};
+use crate::api::routes::sync_routes::{pull_branch, push_branch, sync_db};
 use crate::api::routes::user_routes::get_users;
 use crate::api::routes::health_routes::get_health;
 
@@ -44,6 +44,7 @@ pub async fn api() {
         .route("/users", get(get_users))
         .route("/push", post(push_branch))
         .route("/pull", post(pull_branch))
+        .route("/sync-db", post(sync_db))
         .with_state(AppState { client });
 
     let port = env::var("PORT").unwrap_or("3000".to_string());
