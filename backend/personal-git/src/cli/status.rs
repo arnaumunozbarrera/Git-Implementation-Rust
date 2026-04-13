@@ -1,11 +1,10 @@
 use crate::utils::blob_object::{self, HashAlgorithm};
 use crate::utils::index;
 use crate::utils::refs;
-use flate2::read::ZlibDecoder;
+use crate::utils::sync;
 use ignore::WalkBuilder;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::Read;
 use std::path::Path;
 
 use crate::cli::branch;
@@ -32,67 +31,11 @@ fn normalize_stored_path(path: &str) -> String {
     normalized
 }
 
-fn read_loose_object_text(object_type: &str, object_hash: &str) -> String {
-    let path = format!(".voor/objects/{}/{}", object_type, object_hash.trim());
-    let compressed = fs::read(&path)
-        .unwrap_or_else(|_| panic!("Unable to read {} object: {}", object_type, path));
-
-    let mut decoder = ZlibDecoder::new(&compressed[..]);
-    let mut decompressed = Vec::new();
-
-    decoder
-        .read_to_end(&mut decompressed)
-        .expect("Unable to decompress object");
-
-    // Remove "<type> <size>\0" header if present
-    let content_start = decompressed
-        .iter()
-        .position(|b| *b == 0)
-        .map(|idx| idx + 1)
-        .unwrap_or(0);
-
-    String::from_utf8_lossy(&decompressed[content_start..]).into_owned()
-}
-
-/// Read the tree referenced by a commit and return:
-///     path -> blob_hash
 fn read_commit_tree(commit_hash: &str) -> HashMap<String, String> {
-    if commit_hash.trim().is_empty() {
-        return HashMap::new();
-    }
-
-    let commit_content = read_loose_object_text("commit", commit_hash);
-
-    let tree_hash = commit_content
-        .lines()
-        .find_map(|line| line.strip_prefix("tree "))
-        .map(str::trim)
-        .unwrap_or("");
-
-    if tree_hash.is_empty() {
-        return HashMap::new();
-    }
-
-    let tree_content = read_loose_object_text("tree", tree_hash);
-
-    tree_content
-        .lines()
-        .filter_map(|line| {
-            let line = line.trim_end_matches('\r');
-
-            if line.is_empty() {
-                return None;
-            }
-
-            // New format: "<hash>\t<path>"
-            if let Some((hash, path)) = line.split_once('\t') {
-                return Some((normalize_stored_path(path), hash.trim().to_string()));
-            }
-
-            // Backward compatibility with old format: "<hash> <path>"
-            line.split_once(' ')
-                .map(|(hash, path)| (normalize_stored_path(path), hash.trim().to_string()))
-        })
+    sync::read_commit_tree(commit_hash)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(path, hash)| (normalize_stored_path(&path), hash))
         .collect()
 }
 

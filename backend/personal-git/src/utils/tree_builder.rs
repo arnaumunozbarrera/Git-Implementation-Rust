@@ -1,6 +1,7 @@
-use crate::utils::blob_object::{get_hash, save_compressed_object, HashAlgorithm};
 use crate::utils::index;
+use crate::utils::object_store::{self, ObjectType};
 use crate::utils::refs;
+use crate::utils::sync;
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -58,12 +59,8 @@ pub fn create_commit_object(tree_hash: String, message: &str) -> String {
         message
     );
 
-    let (commit_hash, full_commit_content) =
-        get_hash(commit_content.as_bytes(), HashAlgorithm::Sha1);
-
-    save_compressed_object("commit", &commit_hash, &full_commit_content);
-
-    commit_hash
+    object_store::write_object(ObjectType::Commit, commit_content.as_bytes())
+        .expect("[ERROR] Unable to store commit object")
 }
 
 /// Stores a specific commit object under the provided hash.
@@ -90,7 +87,7 @@ pub fn store_commit_object(commit_hash: String, tree_hash: String, message: &str
     );
 
     let (computed_hash, full_commit_content) =
-        get_hash(commit_content.as_bytes(), HashAlgorithm::Sha1);
+        object_store::hash_object(ObjectType::Commit, commit_content.as_bytes());
 
     if computed_hash != commit_hash.trim() {
         eprintln!(
@@ -99,7 +96,8 @@ pub fn store_commit_object(commit_hash: String, tree_hash: String, message: &str
         );
     }
 
-    save_compressed_object("commit", commit_hash.trim(), &full_commit_content);
+    object_store::write_full_object(commit_hash.trim(), &full_commit_content)
+        .expect("[ERROR] Unable to store commit object");
 }
 
 pub fn clear_index() {
@@ -124,16 +122,5 @@ pub fn build_tree_object() -> String {
     // Deterministic ordering is required so the same logical tree always hashes the same.
     entries.sort_by(|a, b| a.0.cmp(&b.0));
 
-    let mut tree_content = String::new();
-
-    for (path, hash) in entries {
-        tree_content.push_str(&format!("{}\t{}\n", hash, path));
-    }
-
-    let (tree_hash, full_tree_content) =
-        get_hash(tree_content.as_bytes(), HashAlgorithm::Sha1);
-
-    save_compressed_object("tree", &tree_hash, &full_tree_content);
-
-    tree_hash
+    sync::build_tree_from_index(&entries).expect("[ERROR] Unable to build tree object")
 }

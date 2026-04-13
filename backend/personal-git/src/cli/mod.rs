@@ -7,3 +7,4 @@ pub mod status;
 pub mod commit;
 pub mod branch;
 pub mod checkout;
+pub mod remote_server;

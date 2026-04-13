@@ -12,6 +12,13 @@ pub fn get_current_branch() -> String {
         .to_string()
 }
 
+pub fn current_branch_or(value: Option<&str>) -> String {
+    value
+        .map(|branch| branch.trim().to_string())
+        .filter(|branch| !branch.is_empty())
+        .unwrap_or_else(get_current_branch)
+}
+
 pub fn display_branches() {
     if !Path::new(".voor/refs/heads").exists() {
         println!("[INFO] No branches found");

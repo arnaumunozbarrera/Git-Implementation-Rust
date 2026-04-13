@@ -3,6 +3,8 @@ use std::path::Path;
 
 use crate::cli::branch;
 use crate::cli::status;
+use crate::utils::refs;
+use crate::utils::sync;
 
 pub fn checkout_to_branch(branch_name: &str) {
     let root_path = Path::new(".");
@@ -19,11 +21,19 @@ pub fn checkout_to_branch(branch_name: &str) {
             return;
         }
 
+        let previous_commit = refs::read_head_target();
+        let target_commit = fs::read_to_string(&branch_path).unwrap_or_default();
+
         // Update HEAD to point to the new branch
         let new_head_content = format!("ref: refs/heads/{}", branch_name);
 
         fs::write(".voor/HEAD", new_head_content)
             .expect("[ERROR] Failed to update HEAD");
+
+        if let Err(error) = sync::restore_working_tree(&previous_commit, target_commit.trim()) {
+            println!("{}", error);
+            return;
+        }
 
         println!("[INFO] Switched to branch '{}'", branch_name);
     }

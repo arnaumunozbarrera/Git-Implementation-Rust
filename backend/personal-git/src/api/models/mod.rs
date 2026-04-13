@@ -10,7 +10,7 @@ pub mod trees;
 pub mod tree_entries;
 
 pub use users::User;
-pub use repositories::Repository;
+pub use repositories::{InitRepoRequest, InitRepoResponse, Repository};
 pub use commits_metadata::CommitMetadata;
 pub use branches::Branch;
 pub use stars::Star;

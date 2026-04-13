@@ -6,18 +6,20 @@ use flate2::Compression;
 use sha1::{Digest as Sha1Digest, Sha1};
 use sha2::Sha256;
 
+use crate::utils::object_store::ObjectType;
+
 #[derive(Debug, Clone, Copy)]
 pub enum HashAlgorithm {
     Sha1,
     Sha256,
 }
 
-pub fn get_header(extracted_content: &[u8]) -> Vec<u8> {
-    format!("blob {}\0", extracted_content.len()).into_bytes()
+pub fn get_header(object_type: ObjectType, extracted_content: &[u8]) -> Vec<u8> {
+    format!("{} {}\0", object_type.as_str(), extracted_content.len()).into_bytes()
 }
 
-pub fn serialize_blob(extracted_content: &[u8]) -> Vec<u8> {
-    let mut full = get_header(extracted_content);
+pub fn serialize_object(object_type: ObjectType, extracted_content: &[u8]) -> Vec<u8> {
+    let mut full = get_header(object_type, extracted_content);
     full.extend_from_slice(extracted_content);
     full
 }
@@ -37,10 +39,18 @@ pub fn compute_hash(full: &[u8], algorithm: HashAlgorithm) -> String {
     }
 }
 
-pub fn get_hash(extracted_content: &[u8], algorithm: HashAlgorithm) -> (String, Vec<u8>) {
-    let full = serialize_blob(extracted_content);
+pub fn get_hash_for_type(
+    object_type: ObjectType,
+    extracted_content: &[u8],
+    algorithm: HashAlgorithm,
+) -> (String, Vec<u8>) {
+    let full = serialize_object(object_type, extracted_content);
     let hash = compute_hash(&full, algorithm);
     (hash, full)
+}
+
+pub fn get_hash(extracted_content: &[u8], algorithm: HashAlgorithm) -> (String, Vec<u8>) {
+    get_hash_for_type(ObjectType::Blob, extracted_content, algorithm)
 }
 
 pub fn save_compressed_object(dir: &str, file: &str, full: &[u8]) {

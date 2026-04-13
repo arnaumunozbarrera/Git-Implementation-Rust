@@ -28,7 +28,8 @@ pub fn init_command() {
         fs::write(".voor/refs/heads/master", "").unwrap();
         fs::write(".voor/HEAD", "ref: refs/heads/master").unwrap();
         fs::write(".voor/index", "").unwrap();
-        fs::write(".voorignore", ".env\n\n.voor/\n/.voor/\n").unwrap();
+        fs::write(".voorignore", ".env\n\n.voor/\n/.voor/\n\nCargo.lock\nCargo.toml").unwrap();
+        fs::write(".voor/config", "[remote \"origin\"]\nurl = http://localhost:3000\n").unwrap();
         
         println!("[INFO] `.voor` directory initialized successfully!\n");
     }
