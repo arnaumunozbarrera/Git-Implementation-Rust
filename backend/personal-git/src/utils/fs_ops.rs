@@ -27,7 +27,7 @@ where
 }
 
 pub fn acquire_repo_lock(operation: &str, timeout_ms: u64) -> Result<RepoLockGuard, String> {
-    let lock_path = PathBuf::from(".voor/locks/repo.lock");
+    let lock_path = repo_lock_path();
     if let Some(parent) = lock_path.parent() {
         fs::create_dir_all(parent)
             .map_err(|err| format!("[ERROR] Unable to create lock directory: {}", err))?;
@@ -75,6 +75,14 @@ pub fn acquire_repo_lock(operation: &str, timeout_ms: u64) -> Result<RepoLockGua
                 return Err(format!("[ERROR] Unable to create repository lock: {}", error));
             }
         }
+    }
+}
+
+fn repo_lock_path() -> PathBuf {
+    if Path::new(".voor").exists() {
+        PathBuf::from(".voor/locks/repo.lock")
+    } else {
+        PathBuf::from(".voor-init.lock")
     }
 }
 
