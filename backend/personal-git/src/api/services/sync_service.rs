@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use serde_json::json;
 
 use crate::api::clients::supabase::SupabaseClient;
+use crate::api::auth::AuthenticatedUser;
 use crate::utils::fs_ops;
 use crate::utils::object_store::{self, ObjectType, ParsedObject};
 use crate::utils::refs;
@@ -14,11 +15,11 @@ use sqlx::Row;
 
 pub async fn push_branch(
     client: Option<&SupabaseClient>,
+    user: &AuthenticatedUser,
     payload: PushRequest,
 ) -> Result<PushResponse, String> {
     let _repo_lock = fs_ops::acquire_repo_lock("api-push", 15_000)?;
     validate_repo_and_branch(&payload.repo_id, &payload.branch, &payload.head)?;
-    require_user_id(&payload.user_id)?;
 
     sync::save_received_objects(&payload.objects)?;
     refs::update_ref(&format!("refs/heads/{}", payload.branch.trim()), &payload.head);
@@ -27,7 +28,7 @@ pub async fn push_branch(
     let sync_outcome = sync_objects_to_database(
         client,
         payload.repo_id.trim(),
-        payload.user_id.trim(),
+        user.user_id.trim(),
         payload.branch.trim(),
         payload.head.trim(),
         &payload.objects,
@@ -48,11 +49,11 @@ pub async fn push_branch(
 
 pub async fn pull_branch(
     client: Option<&SupabaseClient>,
+    user: &AuthenticatedUser,
     payload: PullRequest,
 ) -> Result<PullResponse, String> {
     let _repo_lock = fs_ops::acquire_repo_lock("api-pull", 15_000)?;
     validate_repo_and_branch(&payload.repo_id, &payload.branch, "pull")?;
-    require_user_id(&payload.user_id)?;
 
     let branch_ref = format!(".voor/refs/heads/{}", payload.branch.trim());
     let head = std::fs::read_to_string(&branch_ref)
@@ -69,7 +70,7 @@ pub async fn pull_branch(
     let database_action = log_sync_action(
         client,
         payload.repo_id.trim(),
-        payload.user_id.trim(),
+        user.user_id.trim(),
         "pull",
         json!({
             "branch": payload.branch.trim(),
@@ -89,11 +90,11 @@ pub async fn pull_branch(
 
 pub async fn sync_db(
     client: Option<&SupabaseClient>,
+    user: &AuthenticatedUser,
     payload: SyncDbRequest,
 ) -> Result<SyncDbResponse, String> {
     let _repo_lock = fs_ops::acquire_repo_lock("api-sync-db", 15_000)?;
     validate_repo_and_branch(&payload.repo_id, &payload.branch, &payload.head)?;
-    require_user_id(&payload.user_id)?;
 
     sync::save_received_objects(&payload.objects)?;
     refs::update_ref(&format!("refs/heads/{}", payload.branch.trim()), &payload.head);
@@ -101,7 +102,7 @@ pub async fn sync_db(
     let sync_outcome = sync_objects_to_database(
         client,
         payload.repo_id.trim(),
-        payload.user_id.trim(),
+        user.user_id.trim(),
         payload.branch.trim(),
         payload.head.trim(),
         &payload.objects,
@@ -141,14 +142,6 @@ fn validate_repo_and_branch(repo_id: &str, branch: &str, head: &str) -> Result<(
 
     if head.trim().is_empty() {
         return Err("[ERROR] Missing commit hash".to_string());
-    }
-
-    Ok(())
-}
-
-fn require_user_id(user_id: &str) -> Result<(), String> {
-    if user_id.trim().is_empty() {
-        return Err("[ERROR] Missing user_id".to_string());
     }
 
     Ok(())

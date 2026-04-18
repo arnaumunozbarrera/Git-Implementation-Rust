@@ -22,7 +22,7 @@ pub struct EncodedObject {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PushRequest {
     pub repo_id: String,
-    pub user_id: String,
+    pub user_id: Option<String>,
     pub branch: String,
     pub head: String,
     pub objects: Vec<EncodedObject>,
@@ -38,7 +38,7 @@ pub struct PushResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PullRequest {
     pub repo_id: String,
-    pub user_id: String,
+    pub user_id: Option<String>,
     pub branch: String,
 }
 
@@ -53,7 +53,7 @@ pub struct PullResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncDbRequest {
     pub repo_id: String,
-    pub user_id: String,
+    pub user_id: Option<String>,
     pub branch: String,
     pub head: String,
     pub objects: Vec<EncodedObject>,

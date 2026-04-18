@@ -15,11 +15,12 @@ pub async fn get_all_repos(
 
 pub async fn init_repo(
     client: &SupabaseClient,
+    owner_id: &str,
     payload: InitRepoRequest,
 ) -> Result<InitRepoResponse, String> {
     let repo_id = payload.repo_id.trim();
     let name = payload.name.trim();
-    let owner_id = payload.owner_id.trim();
+    let owner_id = owner_id.trim();
     let default_branch = payload.default_branch.trim();
     let description = payload
         .description

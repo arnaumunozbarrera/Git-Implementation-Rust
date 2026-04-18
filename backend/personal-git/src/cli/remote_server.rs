@@ -1,7 +1,6 @@
-use std::env;
 use std::fs;
 
-use reqwest::blocking::Client;
+use reqwest::blocking::{Client, RequestBuilder};
 use reqwest::StatusCode;
 
 use crate::api::models::{InitRepoRequest, InitRepoResponse};
@@ -19,6 +18,7 @@ struct RemoteConfig {
     url: Option<String>,
     repo_id: Option<String>,
     user_id: Option<String>,
+    auth_token: Option<String>,
 }
 
 pub fn set_remote(url: &str) {
@@ -34,8 +34,34 @@ pub fn set_remote(url: &str) {
     }
 }
 
-pub fn init_remote(user_id: &str, branch_name: Option<&str>) {
-    let result = fs_ops::with_repo_lock("init-remote", || init_remote_locked(user_id, branch_name));
+pub fn login(token: &str) {
+    let result = fs_ops::with_repo_lock("auth-login", || {
+        let mut config = read_config().unwrap_or_default();
+        config.auth_token = Some(token.trim().to_string());
+        write_config(&config)
+    });
+
+    match result {
+        Ok(_) => println!("[INFO] Stored auth token in .voor/config"),
+        Err(error) => println!("{}", error),
+    }
+}
+
+pub fn logout() {
+    let result = fs_ops::with_repo_lock("auth-logout", || {
+        let mut config = read_config().unwrap_or_default();
+        config.auth_token = None;
+        write_config(&config)
+    });
+
+    match result {
+        Ok(_) => println!("[INFO] Removed auth token from .voor/config"),
+        Err(error) => println!("{}", error),
+    }
+}
+
+pub fn init_remote(branch_name: Option<&str>) {
+    let result = fs_ops::with_repo_lock("init-remote", || init_remote_locked(branch_name));
     if let Err(error) = result {
         println!("{}", error);
     }
@@ -55,11 +81,10 @@ pub fn pull_branch(branch_name: &str) {
     }
 }
 
-pub fn sync_db(branch_name: Option<&str>, user_id: Option<&str>) {
+pub fn sync_db(branch_name: Option<&str>) {
     let result = fs_ops::with_repo_lock("sync-db", || {
-        let user_id = resolve_user_id(user_id)?;
         let branch_name = branch::current_branch_or(branch_name);
-        sync_db_internal(&branch_name, &user_id, true)
+        sync_db_internal(&branch_name, true)
     });
 
     if let Err(error) = result {
@@ -67,9 +92,10 @@ pub fn sync_db(branch_name: Option<&str>, user_id: Option<&str>) {
     }
 }
 
-fn init_remote_locked(user_id: &str, branch_name: Option<&str>) -> Result<(), String> {
+fn init_remote_locked(branch_name: Option<&str>) -> Result<(), String> {
     let repo_id = repo_id_from_config_or_cwd()?;
     let remote = get_remote_url()?;
+    let token = get_auth_token()?;
     let branch_name = branch::current_branch_or(branch_name);
     let head = read_branch_head(&branch_name).unwrap_or_default();
     let objects = if head.is_empty() {
@@ -78,12 +104,11 @@ fn init_remote_locked(user_id: &str, branch_name: Option<&str>) -> Result<(), St
         sync::collect_encoded_objects(&head)?
     };
 
-    let response = Client::new()
-        .post(format!("{}/repos/init", remote))
+    let response = authorized(Client::new().post(format!("{}/repos/init", remote)), &token)
         .json(&InitRepoRequest {
             repo_id: repo_id.clone(),
             name: repo_id.clone(),
-            owner_id: user_id.trim().to_string(),
+            owner_id: "self".to_string(),
             default_branch: branch_name.clone(),
             is_private: false,
             description: Some(format!("Remote repository for {}", repo_id)),
@@ -102,14 +127,11 @@ fn init_remote_locked(user_id: &str, branch_name: Option<&str>) -> Result<(), St
                 println!("[INFO] {}", result.message);
                 print_database_action(result.database_action.as_deref());
             }
-            Err(error) => {
-                return Err(format!("[ERROR] Invalid init-remote response: {}", error));
-            }
+            Err(error) => return Err(format!("[ERROR] Invalid init-remote response: {}", error)),
         }
     } else {
         let status = response.status();
         let body = response.text().unwrap_or_default();
-
         if status != StatusCode::CONFLICT {
             return Err(format!("[ERROR] init-remote failed ({}): {}", status, body));
         }
@@ -117,11 +139,11 @@ fn init_remote_locked(user_id: &str, branch_name: Option<&str>) -> Result<(), St
         println!("[WARN] {}", body);
     }
 
-    persist_repo_mapping(&repo_id, user_id)?;
-    println!("[INFO] Saved repo_id '{}' and user_id '{}' in .voor/config", repo_id, user_id.trim());
+    persist_repo_mapping(&repo_id)?;
+    println!("[INFO] Saved repo_id '{}' in .voor/config", repo_id);
 
     if !head.is_empty() {
-        sync_db_internal(&branch_name, user_id, false)?;
+        sync_db_internal(&branch_name, false)?;
     } else {
         println!(
             "[INFO] Branch '{}' has no commits yet; only remote repository metadata was initialized",
@@ -136,15 +158,14 @@ fn push_branch_locked(branch_name: &str) -> Result<(), String> {
     let branch_name = branch::current_branch_or(Some(branch_name));
     let head = read_branch_head(&branch_name)?;
     let remote = get_remote_url()?;
+    let token = get_auth_token()?;
     let repo_id = repo_id_from_config_or_cwd()?;
-    let user_id = resolve_user_id(None)?;
     let objects = sync::collect_encoded_objects(&head)?;
 
-    let response = Client::new()
-        .post(format!("{}/push", remote))
+    let response = authorized(Client::new().post(format!("{}/push", remote)), &token)
         .json(&PushRequest {
             repo_id,
-            user_id,
+            user_id: None,
             branch: branch_name.clone(),
             head,
             objects,
@@ -172,15 +193,14 @@ fn push_branch_locked(branch_name: &str) -> Result<(), String> {
 fn pull_branch_locked(branch_name: &str) -> Result<(), String> {
     let branch_name = branch::current_branch_or(Some(branch_name));
     let remote = get_remote_url()?;
+    let token = get_auth_token()?;
     let repo_id = repo_id_from_config_or_cwd()?;
-    let user_id = resolve_user_id(None)?;
     let current_head = refs::read_head_target();
 
-    let response = Client::new()
-        .post(format!("{}/pull", remote))
+    let response = authorized(Client::new().post(format!("{}/pull", remote)), &token)
         .json(&PullRequest {
             repo_id,
-            user_id,
+            user_id: None,
             branch: branch_name,
         })
         .send()
@@ -209,17 +229,17 @@ fn pull_branch_locked(branch_name: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn sync_db_internal(branch_name: &str, user_id: &str, print_prefix: bool) -> Result<(), String> {
+fn sync_db_internal(branch_name: &str, print_prefix: bool) -> Result<(), String> {
     let head = read_branch_head(branch_name)?;
     let remote = get_remote_url()?;
+    let token = get_auth_token()?;
     let repo_id = repo_id_from_config_or_cwd()?;
     let objects = sync::collect_encoded_objects(&head)?;
 
-    let response = Client::new()
-        .post(format!("{}/sync-db", remote))
+    let response = authorized(Client::new().post(format!("{}/sync-db", remote)), &token)
         .json(&SyncDbRequest {
             repo_id,
-            user_id: user_id.trim().to_string(),
+            user_id: None,
             branch: branch_name.to_string(),
             head,
             objects,
@@ -250,10 +270,21 @@ fn sync_db_internal(branch_name: &str, user_id: &str, print_prefix: bool) -> Res
     }
 }
 
+fn authorized(builder: RequestBuilder, token: &str) -> RequestBuilder {
+    builder.bearer_auth(token.trim())
+}
+
 fn get_remote_url() -> Result<String, String> {
     read_config()?
         .url
         .ok_or_else(|| "[ERROR] Missing remote url in .voor/config".to_string())
+}
+
+fn get_auth_token() -> Result<String, String> {
+    read_config()?
+        .auth_token
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "[ERROR] Missing auth token. Run `cargo run -- login <clerk_jwt>`".to_string())
 }
 
 fn repo_id_from_config_or_cwd() -> Result<String, String> {
@@ -264,31 +295,12 @@ fn repo_id_from_config_or_cwd() -> Result<String, String> {
     sync::repo_id_from_cwd()
 }
 
-fn resolve_user_id(explicit_user_id: Option<&str>) -> Result<String, String> {
-    if let Some(user_id) = explicit_user_id.map(str::trim).filter(|value| !value.is_empty()) {
-        return Ok(user_id.to_string());
-    }
-
-    if let Some(user_id) = read_config()?.user_id {
-        return Ok(user_id);
-    }
-
-    if let Ok(user_id) = env::var("SYNC_LOG_USER_ID") {
-        if !user_id.trim().is_empty() {
-            return Ok(user_id.trim().to_string());
-        }
-    }
-
-    Err("[ERROR] Missing user_id. Run `cargo run -- init-remote <user_id>` or set SYNC_LOG_USER_ID".to_string())
-}
-
-fn persist_repo_mapping(repo_id: &str, user_id: &str) -> Result<(), String> {
+fn persist_repo_mapping(repo_id: &str) -> Result<(), String> {
     let mut config = read_config().unwrap_or_default();
     if config.url.is_none() {
         config.url = Some("http://localhost:3000".to_string());
     }
     config.repo_id = Some(repo_id.trim().to_string());
-    config.user_id = Some(user_id.trim().to_string());
     write_config(&config)
 }
 
@@ -305,6 +317,8 @@ fn read_config() -> Result<RemoteConfig, String> {
             config.repo_id = Some(value.trim().to_string());
         } else if let Some(value) = trimmed.strip_prefix("user_id = ") {
             config.user_id = Some(value.trim().to_string());
+        } else if let Some(value) = trimmed.strip_prefix("auth_token = ") {
+            config.auth_token = Some(value.trim().to_string());
         }
     }
 
@@ -326,6 +340,9 @@ fn write_config(config: &RemoteConfig) -> Result<(), String> {
     }
     if let Some(user_id) = config.user_id.as_deref() {
         content.push_str(&format!("user_id = {}\n", user_id.trim()));
+    }
+    if let Some(auth_token) = config.auth_token.as_deref() {
+        content.push_str(&format!("auth_token = {}\n", auth_token.trim()));
     }
 
     fs_ops::write_file_atomic(CONFIG_PATH, content.as_bytes())

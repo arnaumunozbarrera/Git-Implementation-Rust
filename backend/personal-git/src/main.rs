@@ -105,15 +105,33 @@ fn main() {
                 return;
             }
         }
-        "init-remote" => {
+        "login" => {
             if args.len() == 3 {
-                cli::remote_server::init_remote(&args[2], None);
-            } else if args.len() == 4 {
-                cli::remote_server::init_remote(&args[2], Some(&args[3]));
+                cli::remote_server::login(&args[2]);
+            } else {
+                println!("[EXIT] Unknown argument.\nTry this one:");
+                println!("\t· login <clerk_jwt>");
+                return;
+            }
+        }
+        "logout" => {
+            if args.len() == 2 {
+                cli::remote_server::logout();
+            } else {
+                println!("[EXIT] Unknown argument.\nTry this one:");
+                println!("\t· logout");
+                return;
+            }
+        }
+        "init-remote" => {
+            if args.len() == 2 {
+                cli::remote_server::init_remote(None);
+            } else if args.len() == 3 {
+                cli::remote_server::init_remote(Some(&args[2]));
             } else {
                 println!("[EXIT] Unknown argument.\nTry one of these:");
-                println!("\t· init-remote <user_id>");
-                println!("\t· init-remote <user_id> <branch_name>");
+                println!("\t· init-remote");
+                println!("\t· init-remote <branch_name>");
                 return;
             }
         }
@@ -145,16 +163,13 @@ fn main() {
         }
         "sync-db" => {
             if args.len() == 2 {
-                cli::remote_server::sync_db(None, None);
+                cli::remote_server::sync_db(None);
             } else if args.len() == 3 {
-                cli::remote_server::sync_db(Some(&args[2]), None);
-            } else if args.len() == 4 {
-                cli::remote_server::sync_db(Some(&args[2]), Some(&args[3]));
+                cli::remote_server::sync_db(Some(&args[2]));
             } else {
                 println!("[EXIT] Unknown argument.\nTry one of these:");
                 println!("\t· sync-db");
                 println!("\t· sync-db <branch_name>");
-                println!("\t· sync-db <branch_name> <user_id>");
                 return;
             }
         }

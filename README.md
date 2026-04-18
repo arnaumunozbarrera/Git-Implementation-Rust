@@ -203,17 +203,27 @@ or
 cargo run checkout -b <branch_name> # Create branch & auto-checkout 
 ```
 
+### Auth for remote commands
+```
+cargo run -- login <clerk_jwt>   # Store the current Clerk bearer token locally
+
+or
+
+cargo run -- logout              # Remove the stored token from .voor/config
+```
+
 ## Push/Pull
  
 - `remote <url>` stores the remote URL in `.voor/config`.
+- `login <clerk_jwt>` stores the bearer token in `.voor/config` so local CLI commands can authenticate against the API.
 - `POST /repos/init` creates the repository row in the remote database before the first database-backed sync.
-- `init-remote <user_id> [branch]` initializes the remote database entry for the current local repo, stores `repo_id` and `user_id` in `.voor/config`, and syncs existing local objects if the branch already has commits.
+- `init-remote [branch]` initializes the remote database entry for the current local repo, stores `repo_id` in `.voor/config`, and syncs existing local objects if the branch already has commits.
 - `push [branch]` collects the branch head commit plus all related commits, trees, and blobs, compresses them, base64-encodes them, and sends them to `/push`.
 - `push` now also parses incoming objects on the server and upserts `blobs`, `trees`, `tree_entries`, `commits`, `commits_metadata`, `branches`, and `repo_access_logs`.
 - `pull [branch]` requests the latest branch head plus all related objects from `/pull`, saves them locally, updates refs, and restores the working directory if the pulled branch is checked out.
-- `sync-db [branch] [user_id]` re-scans the local branch head and replays missing database state into the remote without requiring a new commit.
+- `sync-db [branch]` re-scans the local branch head and replays missing database state into the remote without requiring a new commit.
 - The CLI now prints the server-side database sync result for both `push` and `pull`.
-- The server returns explicit status codes for remote repository initialization and uses non-fatal database logging during `push` and `pull`.
+- The server expects `Authorization: Bearer <clerk_jwt>` on all protected routes and uses non-fatal database logging during `push` and `pull`.
 
 ## Remote Repository Initialization API
 
@@ -231,7 +241,7 @@ POST /repos/init
 {
   "repo_id": "personal-git",
   "name": "personal-git",
-  "owner_id": "550e8400-e29b-41d4-a716-446655440000",
+  "owner_id": "self",
   "default_branch": "master",
   "is_private": false,
   "description": "Personal Git implementation in Rust",
@@ -245,14 +255,13 @@ Required fields:
 
 - `repo_id`
 - `name`
-- `owner_id`
 - `default_branch`
 - `is_private`
 
 Notes:
 
 - `repo_id` should match the local folder name because sync derives the repository id from the current working directory.
-- `owner_id` must already exist in `public.users`.
+- `owner_id` is ignored by the backend once the bearer token is validated; the authenticated Clerk user becomes the repository owner in Supabase.
 - The endpoint creates a row in `public.repositories` and creates the default branch in `public.branches`.
 - The current CLI command `init-remote` calls this endpoint for you and then runs `sync-db` automatically if the branch already has commits.
 
@@ -264,7 +273,7 @@ PowerShell:
 $body = @{
   repo_id = "personal-git"
   name = "personal-git"
-  owner_id = "550e8400-e29b-41d4-a716-446655440000"
+  owner_id = "self"
   default_branch = "master"
   is_private = $false
   description = "Personal Git implementation in Rust"
@@ -276,6 +285,7 @@ $body = @{
 Invoke-RestMethod `
   -Method Post `
   -Uri "http://localhost:3000/repos/init" `
+  -Headers @{ Authorization = "Bearer $env:CLERK_JWT" } `
   -ContentType "application/json" `
   -Body $body
 ```
@@ -293,7 +303,7 @@ Success response:
 ### Error management
 
 - `400 Bad Request`: one or more required fields are missing.
-- `404 Not Found`: `owner_id` does not exist in `public.users`.
+- `401 Unauthorized`: missing or invalid Clerk bearer token.
 - `409 Conflict`: the repository already exists in `public.repositories`.
 - `503 Service Unavailable`: `SUPABASE_URL` is not configured or the server started without a DB client.
 - `500 Internal Server Error`: unexpected database failure while validating or inserting the repository.
@@ -302,9 +312,8 @@ Success response:
 
 Server logs:
 
-- Success: `[INFO] Initializing remote repository 'personal-git' for owner '...'`
+- Success: `[INFO] Initializing remote repository 'personal-git' for authenticated user '...'`
 - Success: `[INFO] Initialized remote repository 'personal-git'`
-- Failure: `[WARN] [ERROR] Owner '...' not found`
 - Failure: `[WARN] [ERROR] Repository 'personal-git' already exists`
 
 Client sync logs after initialization:
@@ -314,8 +323,8 @@ Client sync logs after initialization:
   blobs: `hash`, binary `content`, `size`
   trees: `hash`
   tree entries: `tree_hash`, `name`, `type`, `mode`, `hash`
-  commits: `hash`, `tree_hash`, `parent_hash`, request `user_id`, commit `message`
-  commit metadata: `repo_id`, `commit_hash`, request `user_id`, `message`, calculated `additions`, `deletions`
+  commits: `hash`, `tree_hash`, `parent_hash`, authenticated Clerk `sub`, commit `message`
+  commit metadata: `repo_id`, `commit_hash`, authenticated Clerk `sub`, `message`, calculated `additions`, `deletions`
   branches: update existing `last_commit_hash` or create the branch if missing
 - When the DB is empty or partially seeded, the CLI now prints a descriptive skip reason such as:
   `Skipped database log: repository 'personal-git' not found in database`
@@ -333,7 +342,7 @@ Use three folders with the same repository name for the full test:
 Important:
 
 - `repo_id` is derived from the current folder name, so all three folders must end with the same directory name.
-- The database log is only written when both `SUPABASE_URL` and `SYNC_LOG_USER_ID` are available to the server process.
+- The database log is only written when both `SUPABASE_URL` and Clerk auth are configured for the server process.
 - `repo_access_logs` also requires matching rows in `public.users` and `public.repositories`.
 
 ### 1. Prepare the remote repository folder
@@ -348,38 +357,31 @@ Expected result:
 
 - `.voor` is created in the remote repository.
 
-### 2. Configure database logging for the server
+### 2. Configure database logging and auth for the server
 
 Set the variables before starting the server. Put them in `backend/personal-git/.env` or export them in the terminal:
 
 ```powershell
 $env:SUPABASE_URL = "<your_supabase_postgres_url>"
-$env:SYNC_LOG_USER_ID = "<existing_user_id>"
+$env:CLERK_JWT_ISSUER = "https://<your-clerk-domain>"
+$env:CLERK_JWKS_URL = "https://<your-clerk-domain>/.well-known/jwks.json"
+$env:CLERK_JWT_AUDIENCE = "<optional_audience>"
 $env:PORT = "3000"
 ```
 
 Expected result:
 
 - `SUPABASE_URL` allows the server to connect to Supabase.
-- `SYNC_LOG_USER_ID` is the user id written into `repo_access_logs`.
+- Clerk auth is enabled for every protected API route.
 
-### 3. Seed the owner in the database
+### 3. Authenticate the user through Clerk
 
-If `public.users` is empty, create the owner before calling `/repos/init`:
-
-```sql
-insert into public.users (id, username, email)
-values (
-  '550e8400-e29b-41d4-a716-446655440000',
-  'arnau',
-  'arnau@example.com'
-);
-```
+Sign in from the frontend and obtain a Clerk JWT for the current session.
 
 Expected result:
 
-- The owner exists in `public.users`.
-- `SYNC_LOG_USER_ID` can point to this same id.
+- The JWT contains a valid `sub`.
+- The backend can upsert the authenticated user into `public.users` on the first protected request.
 
 ### 4. Start the remote server
 
@@ -396,6 +398,7 @@ http://localhost:3000
 Expected result:
 
 - The terminal prints `[INFO] Database connection OK` when Supabase is reachable.
+- The terminal prints `[INFO] Clerk auth configured` when the JWT configuration is valid.
 - The terminal prints `[INFO] Server running on 127.0.0.1:3000`.
 
 ### 5. Prepare local repository A
@@ -405,6 +408,7 @@ In the first local working repository:
 ```powershell
 cargo run -- init
 cargo run -- remote http://localhost:3000
+cargo run -- login <clerk_jwt>
 ```
 
 Check that `.voor/config` contains:
@@ -412,6 +416,7 @@ Check that `.voor/config` contains:
 ```ini
 [remote "origin"]
 url = http://localhost:3000
+auth_token = <clerk_jwt>
 ```
 
 Expected result:
@@ -424,7 +429,7 @@ Expected result:
 Run the CLI bootstrap command from local repository A:
 
 ```powershell
-cargo run -- init-remote 550e8400-e29b-41d4-a716-446655440000
+cargo run -- init-remote
 ```
 
 Expected result:
@@ -437,7 +442,7 @@ Expected result:
 [remote "origin"]
 url = http://localhost:3000
 repo_id = personal-git
-user_id = 550e8400-e29b-41d4-a716-446655440000
+auth_token = <clerk_jwt>
 ```
 
 - If the branch already has commits, the command also pushes object state into the DB using `sync-db`.
@@ -497,6 +502,7 @@ In a second local repository:
 ```powershell
 cargo run -- init
 cargo run -- remote http://localhost:3000
+cargo run -- login <clerk_jwt>
 ```
 
 Expected result:
@@ -621,10 +627,10 @@ If the remote branch points to an object that is not present on the server, `/pu
 
 - The sync flow currently identifies the repository by the working directory name on client and server.
 - The server keeps exact objects in its own `.voor/objects` store so commit hashes remain stable during push/pull.
-- `/repos`, `/users`, and `/repos/init` depend on `SUPABASE_URL`. Sync routes can run without it, but database logging will be skipped if Supabase is not configured.
+- `/repos`, `/users`, `/repos/init`, `/push`, `/pull`, and `/sync-db` are protected by Clerk bearer-token auth.
 - `/sync-db` also depends on `SUPABASE_URL` because it validates and writes repository state into PostgreSQL.
 - `repo_access_logs` is best-effort. Failed inserts no longer turn a successful `push` or `pull` into an HTTP error.
-- `push` and `sync-db` require a `user_id`. The CLI resolves it from `.voor/config` first and falls back to `SYNC_LOG_USER_ID`.
+- `push`, `pull`, `init-remote`, and `sync-db` now authenticate with the bearer token stored in `.voor/config` after `cargo run -- login <clerk_jwt>`.
 - `push`, `pull`, and `sync-db` now expose the database sync or logging result directly in the CLI output.
 
 ## Concurrency & Locking
@@ -659,56 +665,35 @@ This project now uses a repository-scoped lock and atomic file replacement for c
 - The current model is intentionally conservative: one writer at a time per repository.
 - The database layer still uses database constraints and upserts, but the local repository filesystem is now protected by the repo lock.
 
-## Auth Integration Plan
+## Auth
 
-The next auth step should use:
+This project now uses **Clerk** for authentication and **Supabase Postgres** for persistence.
 
-- **Clerk** for end-user identity, login, session handling, and JWT issuance.
-- **Supabase Postgres** for repository data, access control data, and audit/log tables.
+The API accepts Clerk bearer tokens on every protected route. After the token is validated against the configured JWKS, the backend uses the Clerk `sub` as the user id in Supabase, updates `public.users` when needed, and ignores any `user_id` sent in the request body. For the current scope there is no collaborator model: anyone authenticated and working with a local copy of the repository is treated as the acting owner for their operations.
 
-### Brief explanation
+The backend reads `CLERK_JWT_ISSUER` and `CLERK_JWKS_URL` from the environment. `CLERK_JWT_AUDIENCE` is optional and only needed if your Clerk template includes an audience claim that you want to enforce.
 
-- Clerk should prove who the caller is.
-- The backend should extract the authenticated user from a verified Clerk JWT instead of trusting `user_id` from request JSON.
-- Supabase should store the application-level authorization state:
-  repository ownership
-  collaborators / roles
-  branch or repo permissions if needed
-  audit trail / access logs
+In Clerk, the token template used by the project is `jwt-token`. The backend does not read the template name directly, but the frontend or any local CLI flow that fetches a token must request that template. The token should contain the standard claims `sub`, `iss`, and `exp`. It can also include `email` and `username`; those two fields are used to keep the `users` table populated with readable account data.
 
-### What I need from you to implement it
+If you want the template to match the current implementation, this payload is enough:
 
-Please provide these items:
+```json
+{
+  "email": "{{user.primary_email_address.email_address}}",
+  "username": "{{user.username}}"
+}
+```
 
-1. Clerk setup details:
-   publishable key
-   secret key
-   JWT issuer / JWKS URL
-   the token type you want the backend to accept (`session token`, custom JWT template, or machine token)
+The local CLI uses the same token model as the frontend. Once you have a valid token generated from the `jwt-token` template, store it in the repository config with:
 
-2. User identity mapping decision:
-   whether `public.users.id` in Supabase should equal `clerk_user_id`
-   or whether you want a separate UUID plus a `clerk_user_id` column
+```powershell
+cargo run -- login <clerk_jwt>
+```
 
-3. Authorization model:
-   who can `push`
-   who can `pull`
-   who can `init-remote`
-   whether private repos need owner-only access or collaborator roles
+This writes the token to `.voor/config` as `auth_token`. To clear it again:
 
-4. API client shape:
-   whether the CLI will authenticate with a user session token from Clerk
-   or whether you also want service-to-service / personal access token support
+```powershell
+cargo run -- logout
+```
 
-5. Environment and deployment details:
-   local backend base URL
-   expected frontend origin
-   whether CORS restrictions should be added now
-
-### What I will implement once you provide that
-
-- Axum auth middleware that validates Clerk JWTs through JWKS.
-- Authenticated request context injected into handlers.
-- Removal of trust in caller-supplied `user_id` for protected routes.
-- Supabase-backed repo authorization checks per route.
-- README updates for local setup, required env vars, token flow, and protected endpoint usage.
+The simplest deployment remains the current one: a single backend process, Supabase as the database, and Clerk issuing the bearer token used by both the frontend and the local CLI. No additional auth service or collaborator table is required for this version.

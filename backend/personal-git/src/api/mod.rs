@@ -3,3 +3,4 @@ pub mod services;
 pub mod routes;
 pub mod models;
 pub mod api;
+pub mod auth;
