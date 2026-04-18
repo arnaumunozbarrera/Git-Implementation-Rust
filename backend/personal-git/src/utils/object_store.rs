@@ -7,6 +7,8 @@ use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use sha1::{Digest as Sha1Digest, Sha1};
 
+use crate::utils::fs_ops;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ObjectType {
     Blob,
@@ -88,7 +90,8 @@ pub fn write_full_object(hash: &str, full_bytes: &[u8]) -> Result<(), String> {
         .finish()
         .map_err(|err| format!("[ERROR] Unable to finalize compression: {}", err))?;
 
-    fs::write(path, compressed).map_err(|err| format!("[ERROR] Unable to write object file: {}", err))
+    fs_ops::write_file_atomic(&path, &compressed)
+        .map_err(|err| format!("[ERROR] Unable to write object file: {}", err))
 }
 
 pub fn write_object(object_type: ObjectType, content: &[u8]) -> Result<String, String> {

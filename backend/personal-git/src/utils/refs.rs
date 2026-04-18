@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::Path;
 
+use crate::utils::fs_ops;
+
 pub fn read_head() -> String {
     fs::read_to_string(".voor/HEAD").expect("[ERROR] Unable to read HEAD")
 }
@@ -39,7 +41,8 @@ pub fn update_ref(reference: &str, hash_content: &str) {
         fs::create_dir_all(parent).expect("[ERROR] Unable to create ref directory");
     }
 
-    fs::write(path, hash_content.trim()).expect("[ERROR] Unable to update ref");
+    fs_ops::write_file_atomic(&path, hash_content.trim().as_bytes())
+        .expect("[ERROR] Unable to update ref");
 }
 
 /// Updates whatever HEAD currently points to:
@@ -52,11 +55,12 @@ pub fn update_head_target(hash_content: &str) {
     if let Some(head_ref) = trimmed.strip_prefix("ref: ") {
         update_ref(head_ref.trim(), hash_content);
     } else {
-        fs::write(".voor/HEAD", hash_content.trim()).expect("[ERROR] Unable to update HEAD");
+        fs_ops::write_file_atomic(".voor/HEAD", hash_content.trim().as_bytes())
+            .expect("[ERROR] Unable to update HEAD");
     }
 }
 
 pub fn update_head_branch(branch: &str) {
-    fs::write(".voor/HEAD", format!("ref: refs/heads/{}", branch.trim()))
-        .expect("[ERROR] Unable to update HEAD");
+    let content = format!("ref: refs/heads/{}", branch.trim());
+    fs_ops::write_file_atomic(".voor/HEAD", content.as_bytes()).expect("[ERROR] Unable to update HEAD");
 }

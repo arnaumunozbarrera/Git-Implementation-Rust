@@ -10,6 +10,7 @@ use flate2::write::ZlibEncoder;
 use flate2::Compression;
 use serde::{Deserialize, Serialize};
 
+use crate::utils::fs_ops;
 use crate::utils::object_store::{self, ObjectType, TreeEntry};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -282,11 +283,12 @@ pub fn restore_working_tree(current_commit: &str, target_commit: &str) -> Result
                 .map_err(|err| format!("[ERROR] Unable to create '{}': {}", parent.display(), err))?;
         }
 
-        fs::write(&path, blob.content)
+        fs_ops::write_file_atomic(&path, &blob.content)
             .map_err(|err| format!("[ERROR] Unable to restore '{}': {}", path, err))?;
     }
 
-    fs::write(".voor/index", "").map_err(|err| format!("[ERROR] Unable to clear index: {}", err))?;
+    fs_ops::write_file_atomic(".voor/index", b"")
+        .map_err(|err| format!("[ERROR] Unable to clear index: {}", err))?;
     Ok(())
 }
 

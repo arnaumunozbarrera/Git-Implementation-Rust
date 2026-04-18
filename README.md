@@ -626,3 +626,89 @@ If the remote branch points to an object that is not present on the server, `/pu
 - `repo_access_logs` is best-effort. Failed inserts no longer turn a successful `push` or `pull` into an HTTP error.
 - `push` and `sync-db` require a `user_id`. The CLI resolves it from `.voor/config` first and falls back to `SYNC_LOG_USER_ID`.
 - `push`, `pull`, and `sync-db` now expose the database sync or logging result directly in the CLI output.
+
+## Concurrency & Locking
+
+This project now uses a repository-scoped lock and atomic file replacement for critical local mutations.
+
+### Brief explanation
+
+- A single lock file is created at `.voor/locks/repo.lock` before mutating repository state.
+- The lock is used by the main write paths: `init`, `add`, `commit`, branch create/delete, checkout, `init-remote`, `pull`, `push` snapshot creation, `sync-db`, and the server-side `/push`, `/pull`, `/sync-db` handlers.
+- When the lock is held, other mutating operations wait for it instead of racing on `HEAD`, refs, index state, config, or object files.
+- Lock files older than 5 minutes are treated as stale and removed automatically.
+- Critical files are now written through a temporary file and then moved into place:
+  `.voor/HEAD`
+  `.voor/index`
+  `.voor/config`
+  `.voor/refs/heads/*`
+  `.voor/objects/*`
+
+### Why this was added
+
+- Prevent concurrent commands from overwriting `HEAD` or branch refs.
+- Prevent partial writes to the index, config, and object store when two processes write at once.
+- Keep `pull` / checkout-style working tree restoration from interleaving with local commit or branch operations.
+- Give the API and CLI the same single-writer behavior on the local repository storage.
+
+### Operational notes
+
+- Lock wait timeout: 15 seconds.
+- Poll interval while waiting: 100 ms.
+- Stale lock TTL: 5 minutes.
+- The current model is intentionally conservative: one writer at a time per repository.
+- The database layer still uses database constraints and upserts, but the local repository filesystem is now protected by the repo lock.
+
+## Auth Integration Plan
+
+The next auth step should use:
+
+- **Clerk** for end-user identity, login, session handling, and JWT issuance.
+- **Supabase Postgres** for repository data, access control data, and audit/log tables.
+
+### Brief explanation
+
+- Clerk should prove who the caller is.
+- The backend should extract the authenticated user from a verified Clerk JWT instead of trusting `user_id` from request JSON.
+- Supabase should store the application-level authorization state:
+  repository ownership
+  collaborators / roles
+  branch or repo permissions if needed
+  audit trail / access logs
+
+### What I need from you to implement it
+
+Please provide these items:
+
+1. Clerk setup details:
+   publishable key
+   secret key
+   JWT issuer / JWKS URL
+   the token type you want the backend to accept (`session token`, custom JWT template, or machine token)
+
+2. User identity mapping decision:
+   whether `public.users.id` in Supabase should equal `clerk_user_id`
+   or whether you want a separate UUID plus a `clerk_user_id` column
+
+3. Authorization model:
+   who can `push`
+   who can `pull`
+   who can `init-remote`
+   whether private repos need owner-only access or collaborator roles
+
+4. API client shape:
+   whether the CLI will authenticate with a user session token from Clerk
+   or whether you also want service-to-service / personal access token support
+
+5. Environment and deployment details:
+   local backend base URL
+   expected frontend origin
+   whether CORS restrictions should be added now
+
+### What I will implement once you provide that
+
+- Axum auth middleware that validates Clerk JWTs through JWKS.
+- Authenticated request context injected into handlers.
+- Removal of trust in caller-supplied `user_id` for protected routes.
+- Supabase-backed repo authorization checks per route.
+- README updates for local setup, required env vars, token flow, and protected endpoint usage.

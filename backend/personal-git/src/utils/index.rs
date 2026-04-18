@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+use crate::utils::fs_ops;
+
 fn normalize_path_str(path: &str) -> String {
     let mut normalized = path.trim().replace('\\', "/");
 
@@ -33,7 +35,7 @@ pub fn write_index(hash: &str, path: &Path) {
         content.push_str(&format!("{}\t{}\n", hash.trim(), path));
     }
 
-    fs::write(".voor/index", content).expect("[ERROR] Unable to write index");
+    fs_ops::write_file_atomic(".voor/index", content.as_bytes()).expect("[ERROR] Unable to write index");
 }
 
 /// Returns:

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use serde_json::json;
 
 use crate::api::clients::supabase::SupabaseClient;
+use crate::utils::fs_ops;
 use crate::utils::object_store::{self, ObjectType, ParsedObject};
 use crate::utils::refs;
 use crate::utils::sync::{
@@ -15,6 +16,7 @@ pub async fn push_branch(
     client: Option<&SupabaseClient>,
     payload: PushRequest,
 ) -> Result<PushResponse, String> {
+    let _repo_lock = fs_ops::acquire_repo_lock("api-push", 15_000)?;
     validate_repo_and_branch(&payload.repo_id, &payload.branch, &payload.head)?;
     require_user_id(&payload.user_id)?;
 
@@ -48,6 +50,7 @@ pub async fn pull_branch(
     client: Option<&SupabaseClient>,
     payload: PullRequest,
 ) -> Result<PullResponse, String> {
+    let _repo_lock = fs_ops::acquire_repo_lock("api-pull", 15_000)?;
     validate_repo_and_branch(&payload.repo_id, &payload.branch, "pull")?;
     require_user_id(&payload.user_id)?;
 
@@ -88,6 +91,7 @@ pub async fn sync_db(
     client: Option<&SupabaseClient>,
     payload: SyncDbRequest,
 ) -> Result<SyncDbResponse, String> {
+    let _repo_lock = fs_ops::acquire_repo_lock("api-sync-db", 15_000)?;
     validate_repo_and_branch(&payload.repo_id, &payload.branch, &payload.head)?;
     require_user_id(&payload.user_id)?;
 

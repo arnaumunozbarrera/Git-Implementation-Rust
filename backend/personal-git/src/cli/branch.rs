@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::Path;
 
+use crate::utils::fs_ops;
+
 pub fn get_current_branch() -> String {
     let head_content = fs::read_to_string(".voor/HEAD")
         .expect("[ERROR] Failed to read HEAD");
@@ -25,7 +27,6 @@ pub fn display_branches() {
         return;
     }
 
-    // Read HEAD to know current branch
     let head_content = fs::read_to_string(".voor/HEAD")
         .expect("[ERROR] Failed to read HEAD");
 
@@ -34,7 +35,6 @@ pub fn display_branches() {
         .unwrap_or("")
         .trim();
 
-    // Read directory entries
     let entries = fs::read_dir(".voor/refs/heads")
         .expect("[ERROR] Failed to read branches directory");
 
@@ -44,7 +44,7 @@ pub fn display_branches() {
         if let Ok(entry) = entry {
             if let Some(branch_name) = entry.file_name().to_str() {
                 if branch_name == current_branch {
-                    println!("> {} (current branch)", branch_name); 
+                    println!("> {} (current branch)", branch_name);
                 } else {
                     println!("  {}", branch_name);
                 }
@@ -54,14 +54,25 @@ pub fn display_branches() {
 }
 
 pub fn create_branch(branch_name: &str) {
+    if let Err(error) = fs_ops::with_repo_lock("branch-create", || create_branch_locked(branch_name)) {
+        println!("{}", error);
+    }
+}
+
+pub fn delete_branch(branch_name: &str) {
+    if let Err(error) = fs_ops::with_repo_lock("branch-delete", || delete_branch_locked(branch_name)) {
+        println!("{}", error);
+    }
+}
+
+pub(crate) fn create_branch_locked(branch_name: &str) -> Result<(), String> {
     let branch_path = format!("{}/{}", ".voor/refs/heads", branch_name);
 
     if Path::new(&branch_path).exists() {
         println!("[INFO] Branch '{}' already exists", branch_name);
-        return;
+        return Ok(());
     }
 
-    // Read HEAD to find current branch
     let head_content = fs::read_to_string(".voor/HEAD")
         .expect("[ERROR] Failed to read HEAD");
 
@@ -70,39 +81,34 @@ pub fn create_branch(branch_name: &str) {
         .expect("[ERROR] Invalid HEAD format")
         .trim();
 
-    // Read current commit hash
     let current_commit = fs::read_to_string(format!("{}/{}", ".voor", current_ref))
         .expect("[ERROR] Failed to read current branch");
 
-    // Create new branch with same commit
-    fs::write(branch_path, current_commit)
-        .expect("[ERROR] Failed to create branch");
-
+    fs_ops::write_file_atomic(&branch_path, current_commit.as_bytes())?;
     println!("[INFO] Branch '{}' created", branch_name);
-}   
+    Ok(())
+}
 
-pub fn delete_branch(branch_name: &str) {
+fn delete_branch_locked(branch_name: &str) -> Result<(), String> {
     let branch_path = format!("{}/{}", ".voor/refs/heads", branch_name);
 
-    // Check if branch exists
     if !Path::new(&branch_path).exists() {
         println!("[INFO] Branch '{}' does not exist", branch_name);
-        return;
+        return Ok(());
     }
 
-    // Prevent deleting current branch
     let head_content = fs::read_to_string(".voor/HEAD")
         .expect("[ERROR]Failed to read HEAD");
 
     if head_content.contains(branch_name) {
         println!("[WARN] Cannot delete the current branch '{}'", branch_name);
         println!("\t Try checking out to another branch and re-run the command");
-        return;
+        return Ok(());
     }
 
-    // Delete branch file
     fs::remove_file(branch_path)
-        .expect("Failed to delete branch");
+        .map_err(|error| format!("[ERROR] Failed to delete branch '{}': {}", branch_name, error))?;
 
     println!("Branch '{}' deleted", branch_name);
+    Ok(())
 }

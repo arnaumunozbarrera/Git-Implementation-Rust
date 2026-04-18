@@ -1,8 +1,8 @@
 use crate::utils::index;
+use crate::utils::fs_ops;
 use crate::utils::object_store::{self, ObjectType};
 use crate::utils::refs;
 use crate::utils::sync;
-use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn normalize_stored_path(path: &str) -> String {
@@ -101,7 +101,7 @@ pub fn store_commit_object(commit_hash: String, tree_hash: String, message: &str
 }
 
 pub fn clear_index() {
-    fs::write(".voor/index", "").expect("[ERROR] Unable to clear index");
+    fs_ops::write_file_atomic(".voor/index", b"").expect("[ERROR] Unable to clear index");
 }
 
 /// Builds a tree object from the staged index and returns its SHA-1 hash.

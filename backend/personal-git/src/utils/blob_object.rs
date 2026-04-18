@@ -6,6 +6,7 @@ use flate2::Compression;
 use sha1::{Digest as Sha1Digest, Sha1};
 use sha2::Sha256;
 
+use crate::utils::fs_ops;
 use crate::utils::object_store::ObjectType;
 
 #[derive(Debug, Clone, Copy)]
@@ -63,8 +64,8 @@ pub fn save_compressed_object(dir: &str, file: &str, full: &[u8]) {
         .expect("[ERROR] Unable to compress object");
     let compressed = encoder.finish().expect("[ERROR] Unable to finalize compression");
 
-    fs::write(format!(".voor/objects/{}/{}", dir, file), compressed)
-        .expect("[ERROR] Unable to write object file");
+    let path = format!(".voor/objects/{}/{}", dir, file);
+    fs_ops::write_file_atomic(&path, &compressed).expect("[ERROR] Unable to write object file");
 
     // println!("[INFO] Blob created successfully at folder: .voor/objects/{}", dir);
 }
