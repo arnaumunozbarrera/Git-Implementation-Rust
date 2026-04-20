@@ -1,0 +1,7 @@
+.env
+
+.voor/
+/.voor/
+
+Cargo.lock
+Cargo.toml

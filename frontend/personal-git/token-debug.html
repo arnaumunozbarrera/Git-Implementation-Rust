@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clerk JWT Token Debug</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4efe6;
+        --panel: #fffdf8;
+        --ink: #1e1b18;
+        --muted: #6b6259;
+        --line: #d6c8b8;
+        --accent: #9f3a19;
+        --accent-strong: #7a2a11;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, #f8dcb8 0, transparent 30%),
+          linear-gradient(180deg, #efe4d5 0%, var(--bg) 100%);
+      }
+
+      main {
+        max-width: 840px;
+        margin: 48px auto;
+        padding: 0 20px 40px;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 24px;
+        box-shadow: 0 20px 40px rgba(54, 34, 15, 0.08);
+      }
+
+      h1 {
+        margin: 0 0 12px;
+        font-size: 2rem;
+      }
+
+      p,
+      li {
+        line-height: 1.5;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .stack {
+        display: grid;
+        gap: 16px;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      button {
+        border: 0;
+        border-radius: 999px;
+        padding: 12px 18px;
+        font: inherit;
+        background: var(--accent);
+        color: #fff;
+        cursor: pointer;
+      }
+
+      button:hover {
+        background: var(--accent-strong);
+      }
+
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      code,
+      pre {
+        font-family: "Cascadia Code", Consolas, monospace;
+      }
+
+      pre {
+        margin: 0;
+        padding: 16px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: #231d17;
+        color: #f9f1e8;
+        border-radius: 14px;
+        min-height: 84px;
+      }
+
+      .grid {
+        display: grid;
+        gap: 16px;
+      }
+
+      @media (min-width: 760px) {
+        .grid {
+          grid-template-columns: 1fr 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="panel stack">
+        <div>
+          <h1>Clerk JWT Token Debug</h1>
+          <p class="muted">
+            Temporary local page to sign in, generate the <code>jwt-token</code>
+            template, and inspect the resulting <code>sub</code> claim.
+          </p>
+        </div>
+
+        <div class="stack">
+          <p>
+            Replace the two placeholders near the bottom of this file before
+            opening it in the browser:
+          </p>
+          <ul>
+            <li><code>CLERK_FRONTEND_API_URL</code></li>
+            <li><code>CLERK_PUBLISHABLE_KEY</code></li>
+          </ul>
+        </div>
+
+        <div id="auth-root"></div>
+
+        <div class="actions">
+          <button id="get-token" disabled>Generate jwt-token</button>
+          <button id="copy-token" disabled>Copy token</button>
+        </div>
+
+        <div class="grid">
+          <section class="stack">
+            <strong>Session info</strong>
+            <pre id="session-info">Waiting for Clerk...</pre>
+          </section>
+          <section class="stack">
+            <strong>Decoded claims</strong>
+            <pre id="claims-output">No token generated yet.</pre>
+          </section>
+        </div>
+
+        <section class="stack">
+          <strong>JWT token</strong>
+          <pre id="token-output">No token generated yet.</pre>
+        </section>
+      </section>
+    </main>
+
+    <script>
+      const CLERK_FRONTEND_API_URL = "stirred-manatee-47.clerk.accounts.dev";
+      const CLERK_PUBLISHABLE_KEY = "pk_test_c3RpcnJlZC1tYW5hdGVlLTQ3LmNsZXJrLmFjY291bnRzLmRldiQ";
+      const JWT_TEMPLATE = "jwt-token";
+
+      const authRoot = document.getElementById("auth-root");
+      const getTokenButton = document.getElementById("get-token");
+      const copyTokenButton = document.getElementById("copy-token");
+      const tokenOutput = document.getElementById("token-output");
+      const claimsOutput = document.getElementById("claims-output");
+      const sessionInfo = document.getElementById("session-info");
+
+      let latestToken = "";
+
+      function parseJwtClaims(token) {
+        const [, payload] = token.split(".");
+        if (!payload) {
+          throw new Error("Token payload is missing");
+        }
+
+        const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+        const decoded = atob(normalized.padEnd(normalized.length + ((4 - normalized.length % 4) % 4), "="));
+        return JSON.parse(decoded);
+      }
+
+      function updateSignedOutView() {
+        getTokenButton.disabled = true;
+        copyTokenButton.disabled = true;
+        latestToken = "";
+        sessionInfo.textContent = "Signed out.";
+        tokenOutput.textContent = "No token generated yet.";
+        claimsOutput.textContent = "No token generated yet.";
+      }
+
+      async function renderSignedInView() {
+        authRoot.innerHTML = '<div id="user-button"></div>';
+        window.Clerk.mountUserButton(document.getElementById("user-button"));
+
+        const session = window.Clerk.session;
+        sessionInfo.textContent = JSON.stringify(
+          {
+            userId: window.Clerk.user?.id ?? null,
+            sessionId: session?.id ?? null,
+            status: session?.status ?? null
+          },
+          null,
+          2
+        );
+
+        getTokenButton.disabled = false;
+      }
+
+      async function renderAuth() {
+        if (window.Clerk.isSignedIn) {
+          await renderSignedInView();
+          return;
+        }
+
+        authRoot.innerHTML = '<div id="sign-in"></div>';
+        window.Clerk.mountSignIn(document.getElementById("sign-in"));
+        updateSignedOutView();
+      }
+
+      async function generateToken() {
+        try {
+          const token = await window.Clerk.session?.getToken({
+            template: JWT_TEMPLATE,
+            skipCache: true
+          });
+
+          if (!token) {
+            throw new Error("Clerk did not return a token");
+          }
+
+          latestToken = token;
+          const claims = parseJwtClaims(token);
+
+          tokenOutput.textContent = token;
+          claimsOutput.textContent = JSON.stringify(claims, null, 2);
+          copyTokenButton.disabled = false;
+        } catch (error) {
+          tokenOutput.textContent = String(error);
+          claimsOutput.textContent = "Unable to decode claims.";
+          copyTokenButton.disabled = true;
+        }
+      }
+
+      async function copyToken() {
+        if (!latestToken) {
+          return;
+        }
+
+        await navigator.clipboard.writeText(latestToken);
+      }
+
+      function appendScript(src, extraAttributes = {}) {
+        const script = document.createElement("script");
+        script.src = src;
+        script.defer = true;
+        script.crossOrigin = "anonymous";
+
+        for (const [key, value] of Object.entries(extraAttributes)) {
+          script.setAttribute(key, value);
+        }
+
+        document.body.appendChild(script);
+        return new Promise((resolve, reject) => {
+          script.addEventListener("load", resolve, { once: true });
+          script.addEventListener("error", reject, { once: true });
+        });
+      }
+
+      async function boot() {
+        if (
+          CLERK_FRONTEND_API_URL === "YOUR_FRONTEND_API_URL" ||
+          CLERK_PUBLISHABLE_KEY === "YOUR_PUBLISHABLE_KEY"
+        ) {
+          sessionInfo.textContent =
+            "Set CLERK_FRONTEND_API_URL and CLERK_PUBLISHABLE_KEY in token-debug.html first.";
+          return;
+        }
+
+        await appendScript(
+          "https://" + CLERK_FRONTEND_API_URL + "/npm/@clerk/ui@1/dist/ui.browser.js"
+        );
+        await appendScript(
+          "https://" + CLERK_FRONTEND_API_URL + "/npm/@clerk/clerk-js@6/dist/clerk.browser.js",
+          { "data-clerk-publishable-key": CLERK_PUBLISHABLE_KEY }
+        );
+
+        await window.Clerk.load({
+          ui: { ClerkUI: window.__internal_ClerkUICtor }
+        });
+
+        getTokenButton.addEventListener("click", generateToken);
+        copyTokenButton.addEventListener("click", copyToken);
+
+        window.Clerk.addListener(async ({ user }) => {
+          if (user) {
+            await renderSignedInView();
+          } else {
+            updateSignedOutView();
+            await renderAuth();
+          }
+        });
+
+        await renderAuth();
+      }
+
+      window.addEventListener("load", () => {
+        boot().catch((error) => {
+          sessionInfo.textContent = "Failed to load Clerk: " + error;
+        });
+      });
+    </script>
+  </body>
+</html>
