@@ -1,5 +1,7 @@
-use axum::Json;
+use axum::{extract::State, Json};
 
-pub async fn get_health() -> Json<serde_json::Value> {
-    Json(serde_json::json!("Status: Alive"))
+use crate::api::api::AppState;
+
+pub async fn get_health(State(state): State<AppState>) -> Json<serde_json::Value> {
+    Json(serde_json::json!(state.monitor.health_report()))
 }
