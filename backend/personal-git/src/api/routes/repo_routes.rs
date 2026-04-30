@@ -8,22 +8,37 @@ use crate::api::api::AppState;
 use crate::api::auth::{self, AuthenticatedUser};
 use crate::api::models::{InitRepoRequest, InitRepoResponse, Repository};
 use crate::api::services::repo_service::{get_all_repos, init_repo as init_repo_service};
+use crate::utils::service_monitor::LogLevel;
 
 pub async fn get_repos(
     State(state): State<AppState>,
     Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<Json<Vec<Repository>>, StatusCode> {
     let Some(client) = state.client.as_ref() else {
+        state.monitor.log(
+            LogLevel::Warn,
+            "backend",
+            "repos-unavailable",
+            "Repository listing requested without configured database client",
+        );
         return Err(StatusCode::SERVICE_UNAVAILABLE);
     };
 
     if let Err(error) = auth::ensure_user_exists(Some(client), &user).await {
-        println!("[WARN] {}", error);
+        state.monitor.log(LogLevel::Warn, "backend", "user-sync-failed", &error);
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     match get_all_repos(client).await {
-        Ok(repos) => Ok(Json(repos)),
+        Ok(repos) => {
+            state.monitor.log(
+                LogLevel::Info,
+                "backend",
+                "repos-listed",
+                &format!("Fetched {} repositories for '{}'", repos.len(), user.user_id),
+            );
+            Ok(Json(repos))
+        }
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
     }
 }
@@ -35,7 +50,7 @@ pub async fn init_repo(
 ) -> Result<Json<InitRepoResponse>, (StatusCode, String)> {
     let Some(client) = state.client.as_ref() else {
         let message = "[ERROR] Supabase client not configured".to_string();
-        println!("[WARN] {}", message);
+        state.monitor.log(LogLevel::Warn, "backend", "init-repo-unavailable", &message);
         return Err((StatusCode::SERVICE_UNAVAILABLE, message));
     };
 
@@ -44,18 +59,23 @@ pub async fn init_repo(
         .map_err(|message| (StatusCode::INTERNAL_SERVER_ERROR, message))?;
 
     let repo_id = payload.repo_id.trim().to_string();
-    println!(
-        "[INFO] Initializing remote repository '{}' for authenticated user '{}'",
-        repo_id, user.user_id
+    state.monitor.log(
+        LogLevel::Info,
+        "backend",
+        "init-repo-start",
+        &format!(
+            "Initializing remote repository '{}' for '{}'",
+            repo_id, user.user_id
+        ),
     );
 
     match init_repo_service(client, &user.user_id, payload).await {
         Ok(response) => {
-            println!("[INFO] {}", response.message);
+            state.monitor.log(LogLevel::Info, "backend", "init-repo-finish", &response.message);
             Ok(Json(response))
         }
         Err(message) => {
-            println!("[WARN] {}", message);
+            state.monitor.log(LogLevel::Warn, "backend", "init-repo-failed", &message);
             Err((classify_init_error(&message), message))
         }
     }

@@ -6,3 +6,4 @@ pub mod index;
 pub mod tree_builder;
 pub mod object_store;
 pub mod sync;
+pub mod service_monitor;

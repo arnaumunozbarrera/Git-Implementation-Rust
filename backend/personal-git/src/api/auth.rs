@@ -13,6 +13,7 @@ use tokio::sync::RwLock;
 
 use crate::api::api::AppState;
 use crate::api::clients::supabase::SupabaseClient;
+use crate::utils::service_monitor::LogLevel;
 
 #[derive(Clone)]
 pub struct AuthConfig {
@@ -149,6 +150,12 @@ pub async fn require_auth(
     next: Next,
 ) -> Result<Response, (StatusCode, String)> {
     let Some(auth) = state.auth.as_ref() else {
+        state.monitor.log(
+            LogLevel::Warn,
+            "api",
+            "auth-middleware",
+            "Auth requested but not configured",
+        );
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             "[ERROR] Auth not configured".to_string(),
@@ -158,8 +165,17 @@ pub async fn require_auth(
     let user = auth
         .authenticate(request.headers())
         .await
-        .map_err(|message| (StatusCode::UNAUTHORIZED, message))?;
+        .map_err(|message| {
+            state.monitor.log(LogLevel::Warn, "api", "auth-failed", &message);
+            (StatusCode::UNAUTHORIZED, message)
+        })?;
 
+    state.monitor.log(
+        LogLevel::Info,
+        "api",
+        "auth-success",
+        &format!("Authenticated user '{}'", user.user_id),
+    );
     request.extensions_mut().insert(user);
     Ok(next.run(request).await)
 }
