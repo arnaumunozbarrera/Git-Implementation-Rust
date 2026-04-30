@@ -8,6 +8,7 @@ pub mod blobs;
 pub mod commits;
 pub mod trees;
 pub mod tree_entries;
+pub mod frontend;
 
 pub use users::User;
 pub use repositories::{InitRepoRequest, InitRepoResponse, Repository};
@@ -19,3 +20,9 @@ pub use blobs::Blob;
 pub use commits::Commit;
 pub use trees::Tree;
 pub use tree_entries::TreeEntry;
+pub use frontend::{
+    ActivityFeedItem, ActivityFeedQuery, AnalyticsOverviewResponse, CommitGraphNode,
+    CommitGraphQuery, CommitGraphResponse, CommitHistoryQuery, CommitSummary, ContentEntry,
+    ContentsResponse, DashboardActivitySummary, FileContentResponse, PaginationResponse,
+    ReadmePreview, RepoDashboardResponse, RepoPathQuery, RepositoryFileSummary, UserSummary,
+};
