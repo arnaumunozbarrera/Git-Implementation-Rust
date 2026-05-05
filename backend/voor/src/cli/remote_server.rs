@@ -5,6 +5,7 @@ use reqwest::StatusCode;
 
 use crate::api::models::{InitRepoRequest, InitRepoResponse};
 use crate::cli::branch;
+use crate::utils::app_config;
 use crate::utils::fs_ops;
 use crate::utils::refs;
 use crate::utils::sync::{
@@ -35,27 +36,19 @@ pub fn set_remote(url: &str) {
 }
 
 pub fn login(token: &str) {
-    let result = fs_ops::with_repo_lock("auth-login", || {
-        let mut config = read_config().unwrap_or_default();
-        config.auth_token = Some(token.trim().to_string());
-        write_config(&config)
-    });
+    let result = persist_auth_token(token);
 
     match result {
-        Ok(_) => println!("[INFO] Stored auth token in .voor/config"),
+        Ok(path) => println!("[INFO] Stored auth token in {}", path),
         Err(error) => println!("{}", error),
     }
 }
 
 pub fn logout() {
-    let result = fs_ops::with_repo_lock("auth-logout", || {
-        let mut config = read_config().unwrap_or_default();
-        config.auth_token = None;
-        write_config(&config)
-    });
+    let result = clear_auth_token();
 
     match result {
-        Ok(_) => println!("[INFO] Removed auth token from .voor/config"),
+        Ok(path) => println!("[INFO] Removed auth token from {}", path),
         Err(error) => println!("{}", error),
     }
 }
@@ -281,10 +274,23 @@ fn get_remote_url() -> Result<String, String> {
 }
 
 fn get_auth_token() -> Result<String, String> {
+    if let Ok(value) = std::env::var("VOOR_AUTH_TOKEN") {
+        let trimmed = value.trim();
+        if !trimmed.is_empty() {
+            return Ok(trimmed.to_string());
+        }
+    }
+
+    if let Some(value) = app_config::load_user_config()?.auth_token {
+        if !value.trim().is_empty() {
+            return Ok(value.trim().to_string());
+        }
+    }
+
     read_config()?
         .auth_token
         .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| "[ERROR] Missing auth token. Run `cargo run -- login <clerk_jwt>`".to_string())
+        .ok_or_else(|| "[ERROR] Missing auth token. Run `voor login <clerk_jwt>` or set VOOR_AUTH_TOKEN".to_string())
 }
 
 fn repo_id_from_config_or_cwd() -> Result<String, String> {
@@ -359,5 +365,58 @@ fn read_branch_head(branch_name: &str) -> Result<String, String> {
 fn print_database_action(database_action: Option<&str>) {
     if let Some(action) = database_action {
         println!("[INFO] {}", action);
+    }
+}
+
+fn persist_auth_token(token: &str) -> Result<String, String> {
+    let trimmed = token.trim();
+    if trimmed.is_empty() {
+        return Err("[ERROR] Refusing to store an empty auth token".to_string());
+    }
+
+    let mut config = app_config::load_user_config().unwrap_or_default();
+    config.auth_token = Some(trimmed.to_string());
+    let path = app_config::user_config_path()?;
+    app_config::save_user_config(&config)?;
+
+    migrate_local_auth_token(trimmed)?;
+    Ok(path.display().to_string())
+}
+
+fn clear_auth_token() -> Result<String, String> {
+    let mut config = app_config::load_user_config().unwrap_or_default();
+    config.auth_token = None;
+    let path = app_config::user_config_path()?;
+    app_config::save_user_config(&config)?;
+
+    clear_local_auth_token()?;
+    Ok(path.display().to_string())
+}
+
+fn migrate_local_auth_token(token: &str) -> Result<(), String> {
+    let result = fs_ops::with_repo_lock("auth-login", || {
+        let mut config = read_config().unwrap_or_default();
+        config.auth_token = Some(token.to_string());
+        write_config(&config)
+    });
+
+    match result {
+        Ok(_) => Ok(()),
+        Err(error) if error.contains("Timed out waiting for repository lock") => Err(error),
+        Err(_) => Ok(()),
+    }
+}
+
+fn clear_local_auth_token() -> Result<(), String> {
+    let result = fs_ops::with_repo_lock("auth-logout", || {
+        let mut config = read_config().unwrap_or_default();
+        config.auth_token = None;
+        write_config(&config)
+    });
+
+    match result {
+        Ok(_) => Ok(()),
+        Err(error) if error.contains("Timed out waiting for repository lock") => Err(error),
+        Err(_) => Ok(()),
     }
 }

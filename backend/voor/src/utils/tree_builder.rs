@@ -65,6 +65,7 @@ pub fn create_commit_object(tree_hash: String, message: &str) -> String {
 
 /// Stores a specific commit object under the provided hash.
 /// Kept for compatibility/debug usage.
+#[allow(dead_code)]
 pub fn store_commit_object(commit_hash: String, tree_hash: String, message: &str) {
     let parent_line = build_parent_line();
 

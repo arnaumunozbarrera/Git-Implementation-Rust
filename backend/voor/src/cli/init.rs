@@ -4,13 +4,6 @@ use std::path::Path;
 use crate::utils::fs_ops;
 
 pub fn init_command() {
-    let title = fs::read_to_string("src/cli/title.txt")
-        .expect("[ERROR] Could not read ASCII inside file");
-    let subtitle = fs::read_to_string("src/cli/subtitle.txt")
-        .expect("[ERROR] Could not read ASCII inside file");
-
-    println!("{}\n{}\n", title, subtitle);
-
     let result = fs_ops::with_repo_lock("init", || ensure_repo_layout());
 
     match result {

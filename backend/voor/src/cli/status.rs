@@ -202,7 +202,7 @@ pub fn changes_not_commited(root_path: &Path) -> bool {
             }
 
             // Staged new file
-            (Some(index_hash), None) => {
+            (Some(_index_hash), None) => {
                 has_changes = true;
             }
 

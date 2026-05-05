@@ -37,7 +37,7 @@ Examples:
 
 ## Frontend logging utility
 
-`frontend/personal-git/src/common/service-monitor.js` provides a small monitoring helper for future frontend runtime code. It supports:
+`frontend/voor/src/common/service-monitor.js` provides a small monitoring helper for future frontend runtime code. It supports:
 
 - `setStatus(health, status, message)`
 - `logInfo(event, message, details)`

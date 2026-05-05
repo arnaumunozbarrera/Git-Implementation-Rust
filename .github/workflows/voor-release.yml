@@ -1,0 +1,109 @@
+name: voor-release
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend/voor
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend/voor
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Run tests
+        run: cargo test --all-targets
+
+  build:
+    needs: checks
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: voor-linux-x86_64
+            binary_path: backend/voor/target/release/voor
+            archive_name: voor-linux-x86_64.zip
+          - os: macos-latest
+            artifact_name: voor-macos-x86_64
+            binary_path: backend/voor/target/release/voor
+            archive_name: voor-macos-x86_64.zip
+          - os: windows-latest
+            artifact_name: voor-windows-x86_64
+            binary_path: backend/voor/target/release/voor.exe
+            archive_name: voor-windows-x86_64.zip
+    defaults:
+      run:
+        working-directory: backend/voor
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: backend/voor
+
+      - name: Build release binary
+        run: cargo build --release --bin voor
+
+      - name: Package Unix artifact
+        if: runner.os != 'Windows'
+        working-directory: .
+        run: zip -j "${{ matrix.archive_name }}" backend/voor/target/release/voor
+
+      - name: Package Windows artifact
+        if: runner.os == 'Windows'
+        working-directory: .
+        run: Compress-Archive -Path backend/voor/target/release/voor.exe -DestinationPath ${{ matrix.archive_name }}
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.archive_name }}
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**/*
