@@ -60,6 +60,7 @@ pub fn update_head_target(hash_content: &str) {
     }
 }
 
+#[allow(dead_code)]
 pub fn update_head_branch(branch: &str) {
     let content = format!("ref: refs/heads/{}", branch.trim());
     fs_ops::write_file_atomic(".voor/HEAD", content.as_bytes()).expect("[ERROR] Unable to update HEAD");

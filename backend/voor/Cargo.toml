@@ -1,7 +1,16 @@
 [package]
-name = "personal-git"
+name = "voor"
 version = "0.1.0"
 edition = "2024"
+description = "A Git-like distributed version control CLI implemented in Rust"
+license = "MIT"
+repository = "https://github.com/arnaumunozbarrera/voor"
+readme = "../../README.md"
+rust-version = "1.85"
+
+[[bin]]
+name = "voor"
+path = "src/main.rs"
 
 [dependencies]
 flate2 = "1.0"
@@ -15,6 +24,9 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dotenvy = "0.15"
 jsonwebtoken = "9"
+clap = { version = "4.5", features = ["derive", "wrap_help"] }
+directories = "5.0"
+toml = "0.8"
 sqlx = { version = "0.8", features = [
   "runtime-tokio-rustls",
   "postgres",
@@ -23,3 +35,9 @@ sqlx = { version = "0.8", features = [
 ] }
 base64 = "0.22"
 uuid = { version = "1", features = ["serde", "v4"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"

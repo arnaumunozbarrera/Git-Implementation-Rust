@@ -30,6 +30,7 @@ pub struct AuthenticatedUser {
     pub username: Option<String>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Deserialize, Clone)]
 struct JwtClaims {
     sub: String,
