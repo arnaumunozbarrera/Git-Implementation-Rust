@@ -110,12 +110,17 @@ button {
   display: flex;
   align-items: center;
   gap: 12px;
+  width: 100%;
   min-height: 36px;
   padding: 8px 16px;
+  border: 0;
   border-left: 2px solid transparent;
+  background: transparent;
   color: #9ca3af;
+  cursor: pointer;
   font-size: 14px;
   line-height: 20px;
+  text-align: left;
   transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
 }
 
@@ -297,6 +302,161 @@ button {
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 16px;
+}
+
+.workspace-section,
+.settings-page {
+  max-width: 1040px;
+}
+
+.empty-workspace {
+  display: grid;
+  min-height: 360px;
+  place-items: center;
+  border: 1px dashed var(--outline-variant);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.empty-workspace .material-symbols-outlined {
+  color: var(--outline-variant);
+  font-size: 40px;
+}
+
+.settings-tabs {
+  display: flex;
+  width: fit-content;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--canvas);
+}
+
+.settings-tab {
+  min-width: 112px;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--outline);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  padding: 8px 12px;
+  transition: background 150ms ease, color 150ms ease;
+}
+
+.settings-tab:last-child {
+  border-right: 0;
+}
+
+.settings-tab:hover,
+.settings-tab.active {
+  background: var(--surface);
+  color: var(--primary-strong);
+}
+
+.settings-panel {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.settings-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-container);
+  padding: 12px 16px;
+}
+
+.settings-panel-header h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.settings-panel-header span {
+  color: var(--outline);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.settings-panel-body {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.field-label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+}
+
+.field-label input,
+.field-label select,
+.field-label textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--canvas);
+  color: var(--text);
+  font: inherit;
+  font-weight: 400;
+  line-height: 20px;
+  outline: none;
+  padding: 8px 10px;
+}
+
+.field-label textarea {
+  resize: vertical;
+}
+
+.field-label input:focus,
+.field-label select:focus,
+.field-label textarea:focus {
+  border-color: var(--primary-strong);
+  box-shadow: 0 0 0 1px var(--primary-strong);
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.secondary-button {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--primary-strong);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  padding: 8px 12px;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.secondary-button:hover {
+  border-color: var(--primary-strong);
+  background: var(--surface-container);
 }
 
 .analytics-card {
