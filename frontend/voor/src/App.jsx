@@ -1,32 +1,128 @@
 import { useState } from "react";
 
 const navItems = [
-  { id: "overview", icon: "dashboard", label: "Overview" },
-  { id: "activity", icon: "analytics", label: "Activity" },
-  { id: "branches", icon: "call_split", label: "Branches" },
-  { id: "sync", icon: "sync", label: "Sync Monitor" },
+  { id: "overview", icon: "dashboard" },
+  { id: "activity", icon: "analytics" },
+  { id: "branches", icon: "call_split" },
+  { id: "sync", icon: "sync" },
 ];
 
-const emptyPages = {
-  overview: {
-    eyebrow: "Repository Control Plane",
-    title: "Overview",
-    description: "This workspace is reserved for repository summary modules.",
+const translations = {
+  en: {
+    account: {
+      changeAccount: "Change account",
+      logout: "Logout",
+      profileLabel: "User profile",
+    },
+    appearance: {
+      dark: "Dark mode",
+      light: "Light mode",
+    },
+    nav: {
+      overview: "Overview",
+      activity: "Activity",
+      branches: "Branches",
+      sync: "Sync Monitor",
+      settings: "Settings",
+    },
+    pages: {
+      overview: {
+        eyebrow: "Repository Control Plane",
+        title: "Overview",
+        description: "This workspace is reserved for repository summary modules.",
+      },
+      activity: {
+        eyebrow: "Repository Events",
+        title: "Activity",
+        description: "This workspace is reserved for commit and access activity streams.",
+      },
+      branches: {
+        eyebrow: "Version Graph",
+        title: "Branches",
+        description: "This workspace is reserved for branch graph and comparison modules.",
+      },
+      sync: {
+        eyebrow: "Remote Operations",
+        title: "Sync Monitor",
+        description: "This workspace is reserved for push, pull, and database sync telemetry.",
+      },
+    },
+    settings: {
+      eyebrow: "User Configuration",
+      title: "Settings",
+      description: "Application language, visual mode, and profile personalization.",
+      interfaceEyebrow: "Interface",
+      preferencesTitle: "Application Preferences",
+      language: "Language",
+      english: "English",
+      spanish: "Spanish",
+      appearance: "Appearance",
+      profileEyebrow: "Profile",
+      profileTitle: "User Personalization",
+      displayName: "Display name",
+      username: "Username",
+      email: "Email",
+      initials: "Profile initials",
+      save: "Save Settings",
+    },
   },
-  activity: {
-    eyebrow: "Repository Events",
-    title: "Activity",
-    description: "This workspace is reserved for commit and access activity streams.",
-  },
-  branches: {
-    eyebrow: "Version Graph",
-    title: "Branches",
-    description: "This workspace is reserved for branch graph and comparison modules.",
-  },
-  sync: {
-    eyebrow: "Remote Operations",
-    title: "Sync Monitor",
-    description: "This workspace is reserved for push, pull, and database sync telemetry.",
+  es: {
+    account: {
+      changeAccount: "Cambiar cuenta",
+      logout: "Cerrar sesión",
+      profileLabel: "Perfil de usuario",
+    },
+    appearance: {
+      dark: "Modo oscuro",
+      light: "Modo claro",
+    },
+    nav: {
+      overview: "Resumen",
+      activity: "Actividad",
+      branches: "Ramas",
+      sync: "Monitor de sincronización",
+      settings: "Ajustes",
+    },
+    pages: {
+      overview: {
+        eyebrow: "Panel de control del repositorio",
+        title: "Resumen",
+        description: "Este espacio está reservado para los módulos de resumen del repositorio.",
+      },
+      activity: {
+        eyebrow: "Eventos del repositorio",
+        title: "Actividad",
+        description: "Este espacio está reservado para commits y flujos de actividad de acceso.",
+      },
+      branches: {
+        eyebrow: "Grafo de versiones",
+        title: "Ramas",
+        description: "Este espacio está reservado para el grafo de ramas y módulos de comparación.",
+      },
+      sync: {
+        eyebrow: "Operaciones remotas",
+        title: "Monitor de sincronización",
+        description: "Este espacio está reservado para telemetría de push, pull y sincronización de base de datos.",
+      },
+    },
+    settings: {
+      eyebrow: "Configuración de usuario",
+      title: "Ajustes",
+      description: "Idioma de la aplicación, modo visual y personalización del perfil.",
+      interfaceEyebrow: "Interfaz",
+      preferencesTitle: "Preferencias de la aplicación",
+      language: "Idioma",
+      english: "Inglés",
+      spanish: "Español",
+      appearance: "Apariencia",
+      profileEyebrow: "Perfil",
+      profileTitle: "Personalización del usuario",
+      displayName: "Nombre visible",
+      username: "Usuario",
+      email: "Correo electrónico",
+      initials: "Iniciales del perfil",
+      save: "Guardar ajustes",
+    },
   },
 };
 
@@ -64,15 +160,7 @@ export function App() {
   };
 
   const appClassName = `app-shell theme-${settings.theme}`;
-  const labels = settings.language === "es"
-    ? {
-        logout: "Cerrar sesion",
-        changeAccount: "Cambiar cuenta",
-      }
-    : {
-        logout: "Logout",
-        changeAccount: "Change account",
-      };
+  const copy = translations[settings.language] ?? translations.en;
 
   return (
     <div className={appClassName}>
@@ -93,7 +181,7 @@ export function App() {
               type="button"
             >
               <span className="material-symbols-outlined">{item.icon}</span>
-              <span>{item.label}</span>
+              <span>{copy.nav[item.id]}</span>
             </button>
           ))}
         </nav>
@@ -105,7 +193,7 @@ export function App() {
             type="button"
           >
             <span className="material-symbols-outlined">settings</span>
-            <span>Settings</span>
+            <span>{copy.nav.settings}</span>
           </button>
         </div>
       </aside>
@@ -127,7 +215,7 @@ export function App() {
               className="avatar"
               type="button"
               aria-expanded={accountMenuOpen}
-              aria-label="User profile"
+              aria-label={copy.account.profileLabel}
               onClick={() => setAccountMenuOpen((open) => !open)}
             >
               {settings.initials || "VA"}
@@ -138,8 +226,8 @@ export function App() {
                   <strong>{settings.displayName}</strong>
                   <span>{settings.email}</span>
                 </div>
-                <button type="button">{labels.changeAccount}</button>
-                <button type="button">{labels.logout}</button>
+                <button type="button">{copy.account.changeAccount}</button>
+                <button type="button">{copy.account.logout}</button>
               </div>
             ) : null}
           </div>
@@ -151,10 +239,11 @@ export function App() {
           <SettingsPage
             onSave={saveSettings}
             onUpdate={updateSetting}
+            copy={copy}
             settings={settings}
           />
         ) : (
-          <EmptySection page={emptyPages[activePage]} />
+          <EmptySection page={copy.pages[activePage]} />
         )}
       </main>
     </div>
@@ -176,47 +265,47 @@ function EmptySection({ page }) {
   );
 }
 
-function SettingsPage({ onSave, onUpdate, settings }) {
+function SettingsPage({ copy, onSave, onUpdate, settings }) {
   return (
     <section className="settings-page">
       <div className="landing-heading">
-        <p className="label-caps">User Configuration</p>
-        <h1>Settings</h1>
-        <p>Application language, visual mode, and profile personalization.</p>
+        <p className="label-caps">{copy.settings.eyebrow}</p>
+        <h1>{copy.settings.title}</h1>
+        <p>{copy.settings.description}</p>
       </div>
 
       <div className="settings-stack">
-        <SettingsPanel eyebrow="Interface" title="Application Preferences">
+        <SettingsPanel eyebrow={copy.settings.interfaceEyebrow} title={copy.settings.preferencesTitle}>
           <div className="form-grid">
             <label className="field-label">
-              Language
+              {copy.settings.language}
               <select value={settings.language} onChange={(event) => onUpdate("language", event.target.value)}>
-                <option value="en">English</option>
-                <option value="es">Spanish</option>
+                <option value="en">{copy.settings.english}</option>
+                <option value="es">{copy.settings.spanish}</option>
               </select>
             </label>
             <label className="field-label">
-              Appearance
+              {copy.settings.appearance}
               <select value={settings.theme} onChange={(event) => onUpdate("theme", event.target.value)}>
-                <option value="dark">Dark mode</option>
-                <option value="light">Light mode</option>
+                <option value="dark">{copy.appearance.dark}</option>
+                <option value="light">{copy.appearance.light}</option>
               </select>
             </label>
           </div>
         </SettingsPanel>
 
-        <SettingsPanel eyebrow="Profile" title="User Personalization">
+        <SettingsPanel eyebrow={copy.settings.profileEyebrow} title={copy.settings.profileTitle}>
           <div className="form-grid">
-            <TextField label="Display name" value={settings.displayName} onChange={(value) => onUpdate("displayName", value)} />
-            <TextField label="Username" value={settings.username} onChange={(value) => onUpdate("username", value)} />
-            <TextField label="Email" type="email" value={settings.email} onChange={(value) => onUpdate("email", value)} />
-            <TextField label="Profile initials" value={settings.initials} onChange={(value) => onUpdate("initials", value.slice(0, 3).toUpperCase())} />
+            <TextField label={copy.settings.displayName} value={settings.displayName} onChange={(value) => onUpdate("displayName", value)} />
+            <TextField label={copy.settings.username} value={settings.username} onChange={(value) => onUpdate("username", value)} />
+            <TextField label={copy.settings.email} type="email" value={settings.email} onChange={(value) => onUpdate("email", value)} />
+            <TextField label={copy.settings.initials} value={settings.initials} onChange={(value) => onUpdate("initials", value.slice(0, 3).toUpperCase())} />
           </div>
         </SettingsPanel>
       </div>
 
       <div className="settings-actions">
-        <button className="secondary-button" type="button" onClick={onSave}>Save Settings</button>
+        <button className="secondary-button" type="button" onClick={onSave}>{copy.settings.save}</button>
       </div>
     </section>
   );
