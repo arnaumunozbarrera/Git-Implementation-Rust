@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { SignIn, SignedIn, SignedOut, useClerk, useUser } from "@clerk/clerk-react";
+import { useEffect, useMemo, useState } from "react";
 
 const navItems = [
   { id: "overview", icon: "dashboard" },
@@ -17,6 +18,13 @@ const translations = {
     appearance: {
       dark: "Dark mode",
       light: "Light mode",
+    },
+    auth: {
+      eyebrow: "Secure Workspace",
+      title: "Sign in to Git Voor",
+      description: "Authenticate with Clerk to access repository telemetry and protected backend routes.",
+      missingTitle: "Clerk is not configured",
+      missingDescription: "Set VITE_CLERK_PUBLISHABLE_KEY in the frontend environment to enable login.",
     },
     nav: {
       overview: "Overview",
@@ -64,64 +72,79 @@ const translations = {
       email: "Email",
       initials: "Profile initials",
       save: "Save Settings",
+      saved: "Settings saved",
+      profileSaved: "Clerk profile updated",
+      profileError: "Unable to update Clerk profile",
+      emailLocked: "Primary email is managed by Clerk account settings.",
     },
   },
   es: {
     account: {
       changeAccount: "Cambiar cuenta",
-      logout: "Cerrar sesión",
+      logout: "Cerrar sesion",
       profileLabel: "Perfil de usuario",
     },
     appearance: {
       dark: "Modo oscuro",
       light: "Modo claro",
     },
+    auth: {
+      eyebrow: "Espacio seguro",
+      title: "Inicia sesion en Git Voor",
+      description: "Autenticate con Clerk para acceder a la telemetria del repositorio y rutas protegidas del backend.",
+      missingTitle: "Clerk no esta configurado",
+      missingDescription: "Define VITE_CLERK_PUBLISHABLE_KEY en el entorno del frontend para activar el inicio de sesion.",
+    },
     nav: {
       overview: "Resumen",
       activity: "Actividad",
       branches: "Ramas",
-      sync: "Monitor de sincronización",
+      sync: "Monitor de sincronizacion",
       settings: "Ajustes",
     },
     pages: {
       overview: {
         eyebrow: "Panel de control del repositorio",
         title: "Resumen",
-        description: "Este espacio está reservado para los módulos de resumen del repositorio.",
+        description: "Este espacio esta reservado para los modulos de resumen del repositorio.",
       },
       activity: {
         eyebrow: "Eventos del repositorio",
         title: "Actividad",
-        description: "Este espacio está reservado para commits y flujos de actividad de acceso.",
+        description: "Este espacio esta reservado para commits y flujos de actividad de acceso.",
       },
       branches: {
         eyebrow: "Grafo de versiones",
         title: "Ramas",
-        description: "Este espacio está reservado para el grafo de ramas y módulos de comparación.",
+        description: "Este espacio esta reservado para el grafo de ramas y modulos de comparacion.",
       },
       sync: {
         eyebrow: "Operaciones remotas",
-        title: "Monitor de sincronización",
-        description: "Este espacio está reservado para telemetría de push, pull y sincronización de base de datos.",
+        title: "Monitor de sincronizacion",
+        description: "Este espacio esta reservado para telemetria de push, pull y sincronizacion de base de datos.",
       },
     },
     settings: {
-      eyebrow: "Configuración de usuario",
+      eyebrow: "Configuracion de usuario",
       title: "Ajustes",
-      description: "Idioma de la aplicación, modo visual y personalización del perfil.",
+      description: "Idioma de la aplicacion, modo visual y personalizacion del perfil.",
       interfaceEyebrow: "Interfaz",
-      preferencesTitle: "Preferencias de la aplicación",
+      preferencesTitle: "Preferencias de la aplicacion",
       language: "Idioma",
-      english: "Inglés",
-      spanish: "Español",
+      english: "Ingles",
+      spanish: "Espanol",
       appearance: "Apariencia",
       profileEyebrow: "Perfil",
-      profileTitle: "Personalización del usuario",
+      profileTitle: "Personalizacion del usuario",
       displayName: "Nombre visible",
       username: "Usuario",
-      email: "Correo electrónico",
+      email: "Correo electronico",
       initials: "Iniciales del perfil",
       save: "Guardar ajustes",
+      saved: "Ajustes guardados",
+      profileSaved: "Perfil de Clerk actualizado",
+      profileError: "No se pudo actualizar el perfil de Clerk",
+      emailLocked: "El correo principal se gestiona desde los ajustes de cuenta de Clerk.",
     },
   },
 };
@@ -132,10 +155,33 @@ const settingsDefaults = {
   repoVisibility: "public",
   language: "en",
   theme: "dark",
-  displayName: "Voor Admin",
-  username: "voor_admin",
-  email: "admin@gitvoor.local",
-  initials: "VA",
+  displayName: "",
+  username: "",
+  email: "",
+  initials: "",
+};
+
+const clerkAppearance = {
+  variables: {
+    colorBackground: "#161b22",
+    colorInputBackground: "#0d1117",
+    colorInputText: "#e0e2ea",
+    colorPrimary: "#58a6ff",
+    colorText: "#e0e2ea",
+    colorTextSecondary: "#c0c7d4",
+    borderRadius: "4px",
+    fontFamily: "Inter, sans-serif",
+  },
+  elements: {
+    cardBox: "clerk-card-box",
+    card: "clerk-card",
+    headerTitle: "clerk-title",
+    headerSubtitle: "clerk-subtitle",
+    formButtonPrimary: "clerk-primary-button",
+    formFieldInput: "clerk-input",
+    footerActionLink: "clerk-link",
+    socialButtonsBlockButton: "clerk-social-button",
+  },
 };
 
 function readSettings() {
@@ -146,21 +192,89 @@ function readSettings() {
   }
 }
 
+function initialsFromUser(user) {
+  const name = user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || "VA";
+  return name
+    .split(/[ ._@-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join("")
+    .toUpperCase();
+}
+
 export function App() {
-  const [activePage, setActivePage] = useState("overview");
   const [settings, setSettings] = useState(readSettings);
+  const copy = translations[settings.language] ?? translations.en;
+
+  return (
+    <>
+      <SignedOut>
+        <LoginPage copy={copy} theme={settings.theme} />
+      </SignedOut>
+      <SignedIn>
+        <AuthenticatedShell copy={copy} settings={settings} setSettings={setSettings} />
+      </SignedIn>
+    </>
+  );
+}
+
+function AuthenticatedShell({ copy, settings, setSettings }) {
+  const { openSignIn, signOut } = useClerk();
+  const { user } = useUser();
+  const [activePage, setActivePage] = useState("overview");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("");
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    setSettings((current) => ({
+      ...current,
+      displayName: current.displayName || user.fullName || "",
+      email: current.email || user.primaryEmailAddress?.emailAddress || "",
+      initials: current.initials || initialsFromUser(user),
+      username: current.username || user.username || "",
+    }));
+  }, [setSettings, user]);
 
   const updateSetting = (key, value) => {
+    setSaveStatus("");
     setSettings((current) => ({ ...current, [key]: value }));
   };
 
-  const saveSettings = () => {
+  const saveSettings = async () => {
     localStorage.setItem("gitVoorSettings", JSON.stringify(settings));
+
+    try {
+      if (user) {
+        const [firstName, ...lastNameParts] = settings.displayName.trim().split(/\s+/);
+        await user.update({
+          firstName: firstName || undefined,
+          lastName: lastNameParts.join(" ") || undefined,
+          username: settings.username || undefined,
+        });
+      }
+      setSaveStatus(copy.settings.profileSaved);
+    } catch {
+      setSaveStatus(copy.settings.profileError);
+    }
+  };
+
+  const handleChangeAccount = async () => {
+    setAccountMenuOpen(false);
+    await signOut();
+    openSignIn();
+  };
+
+  const handleLogout = async () => {
+    setAccountMenuOpen(false);
+    await signOut();
   };
 
   const appClassName = `app-shell theme-${settings.theme}`;
-  const copy = translations[settings.language] ?? translations.en;
 
   return (
     <div className={appClassName}>
@@ -218,16 +332,16 @@ export function App() {
               aria-label={copy.account.profileLabel}
               onClick={() => setAccountMenuOpen((open) => !open)}
             >
-              {settings.initials || "VA"}
+              {settings.initials || initialsFromUser(user)}
             </button>
             {accountMenuOpen ? (
               <div className="account-popover">
                 <div className="account-summary">
-                  <strong>{settings.displayName}</strong>
-                  <span>{settings.email}</span>
+                  <strong>{settings.displayName || user?.fullName || user?.username}</strong>
+                  <span>{settings.email || user?.primaryEmailAddress?.emailAddress}</span>
                 </div>
-                <button type="button">{copy.account.changeAccount}</button>
-                <button type="button">{copy.account.logout}</button>
+                <button type="button" onClick={handleChangeAccount}>{copy.account.changeAccount}</button>
+                <button type="button" onClick={handleLogout}>{copy.account.logout}</button>
               </div>
             ) : null}
           </div>
@@ -237,9 +351,10 @@ export function App() {
       <main className="main-canvas">
         {activePage === "settings" ? (
           <SettingsPage
+            copy={copy}
             onSave={saveSettings}
             onUpdate={updateSetting}
-            copy={copy}
+            saveStatus={saveStatus}
             settings={settings}
           />
         ) : (
@@ -247,6 +362,42 @@ export function App() {
         )}
       </main>
     </div>
+  );
+}
+
+function LoginPage({ copy, theme }) {
+  return (
+    <main className={`login-page theme-${theme}`}>
+      <section className="login-shell">
+        <div className="login-copy">
+          <span className="material-symbols-outlined brand-icon">terminal</span>
+          <p className="label-caps">{copy.auth.eyebrow}</p>
+          <h1>{copy.auth.title}</h1>
+          <p>{copy.auth.description}</p>
+        </div>
+        <SignIn
+          appearance={clerkAppearance}
+          routing="hash"
+          signUpUrl="#/sign-up"
+          fallbackRedirectUrl="/"
+        />
+      </section>
+    </main>
+  );
+}
+
+export function MissingClerkConfig() {
+  const copy = translations.en;
+
+  return (
+    <main className="login-page theme-dark">
+      <section className="missing-config-panel">
+        <span className="material-symbols-outlined brand-icon">terminal</span>
+        <p className="label-caps">Git Voor</p>
+        <h1>{copy.auth.missingTitle}</h1>
+        <p>{copy.auth.missingDescription}</p>
+      </section>
+    </main>
   );
 }
 
@@ -265,7 +416,7 @@ function EmptySection({ page }) {
   );
 }
 
-function SettingsPage({ copy, onSave, onUpdate, settings }) {
+function SettingsPage({ copy, onSave, onUpdate, saveStatus, settings }) {
   return (
     <section className="settings-page">
       <div className="landing-heading">
@@ -298,13 +449,14 @@ function SettingsPage({ copy, onSave, onUpdate, settings }) {
           <div className="form-grid">
             <TextField label={copy.settings.displayName} value={settings.displayName} onChange={(value) => onUpdate("displayName", value)} />
             <TextField label={copy.settings.username} value={settings.username} onChange={(value) => onUpdate("username", value)} />
-            <TextField label={copy.settings.email} type="email" value={settings.email} onChange={(value) => onUpdate("email", value)} />
+            <TextField disabled help={copy.settings.emailLocked} label={copy.settings.email} type="email" value={settings.email} onChange={() => {}} />
             <TextField label={copy.settings.initials} value={settings.initials} onChange={(value) => onUpdate("initials", value.slice(0, 3).toUpperCase())} />
           </div>
         </SettingsPanel>
       </div>
 
       <div className="settings-actions">
+        {saveStatus ? <span className="settings-status">{saveStatus}</span> : null}
         <button className="secondary-button" type="button" onClick={onSave}>{copy.settings.save}</button>
       </div>
     </section>
@@ -323,11 +475,12 @@ function SettingsPanel({ children, eyebrow, title }) {
   );
 }
 
-function TextField({ label, onChange, type = "text", value }) {
+function TextField({ disabled = false, help, label, onChange, type = "text", value }) {
   return (
     <label className="field-label">
       {label}
-      <input type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+      <input disabled={disabled} type={type} value={value} onChange={(event) => onChange(event.target.value)} />
+      {help ? <span className="field-help">{help}</span> : null}
     </label>
   );
 }
