@@ -20,6 +20,18 @@ export async function fetchWithClerkAuth(path, getToken, options = {}) {
   return response.json();
 }
 
+export async function deleteRepository(repoId, getToken) {
+  return fetchWithClerkAuth(`/repos/${encodeURIComponent(repoId)}`, getToken, {
+    method: "DELETE",
+  });
+}
+
+export async function deleteAccountRecords(getToken) {
+  return fetchWithClerkAuth("/account", getToken, {
+    method: "DELETE",
+  });
+}
+
 export async function fetchAnalyticsOverview(repoId, getToken) {
   if (getToken) {
     return fetchWithClerkAuth(`/repos/${encodeURIComponent(repoId)}/analytics/overview`, getToken);

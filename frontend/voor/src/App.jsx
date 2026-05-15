@@ -1,5 +1,6 @@
-import { SignIn, SignedIn, SignedOut, useClerk, useUser } from "@clerk/clerk-react";
-import { useEffect, useMemo, useState } from "react";
+import { SignIn, SignedIn, SignedOut, useAuth, useClerk, useUser } from "@clerk/clerk-react";
+import { useEffect, useState } from "react";
+import { deleteAccountRecords, deleteRepository } from "./api.js";
 
 const navItems = [
   { id: "overview", icon: "dashboard" },
@@ -70,12 +71,23 @@ const translations = {
       displayName: "Display name",
       username: "Username",
       email: "Email",
-      initials: "Profile initials",
       save: "Save Settings",
       saved: "Settings saved",
       profileSaved: "Clerk profile updated",
       profileError: "Unable to update Clerk profile",
       emailLocked: "Primary email is managed by Clerk account settings.",
+      dangerEyebrow: "Danger Zone",
+      dangerTitle: "Repository and Account Removal",
+      dangerDescription: "These actions permanently remove data from the Voor backend.",
+      removeRepository: "Remove Repository",
+      removeRepositoryHelp: "Deletes the active repository and its related backend records.",
+      deleteAccount: "Delete Account",
+      deleteAccountHelp: "Deletes your backend account records and then removes your Clerk account.",
+      confirmRemoveRepository: "Remove this repository and its backend records?",
+      confirmDeleteAccount: "Delete your account and backend records?",
+      repositoryDeleted: "Repository removed",
+      accountDeleted: "Account deleted",
+      destructiveError: "Unable to complete destructive action",
     },
   },
   es: {
@@ -139,12 +151,23 @@ const translations = {
       displayName: "Nombre visible",
       username: "Usuario",
       email: "Correo electronico",
-      initials: "Iniciales del perfil",
       save: "Guardar ajustes",
       saved: "Ajustes guardados",
       profileSaved: "Perfil de Clerk actualizado",
       profileError: "No se pudo actualizar el perfil de Clerk",
       emailLocked: "El correo principal se gestiona desde los ajustes de cuenta de Clerk.",
+      dangerEyebrow: "Zona de riesgo",
+      dangerTitle: "Eliminar repositorio y cuenta",
+      dangerDescription: "Estas acciones eliminan permanentemente datos del backend de Voor.",
+      removeRepository: "Eliminar repositorio",
+      removeRepositoryHelp: "Elimina el repositorio activo y sus registros relacionados del backend.",
+      deleteAccount: "Eliminar cuenta",
+      deleteAccountHelp: "Elimina tus registros del backend y despues elimina tu cuenta de Clerk.",
+      confirmRemoveRepository: "Eliminar este repositorio y sus registros del backend?",
+      confirmDeleteAccount: "Eliminar tu cuenta y registros del backend?",
+      repositoryDeleted: "Repositorio eliminado",
+      accountDeleted: "Cuenta eliminada",
+      destructiveError: "No se pudo completar la accion destructiva",
     },
   },
 };
@@ -158,7 +181,6 @@ const settingsDefaults = {
   displayName: "",
   username: "",
   email: "",
-  initials: "",
 };
 
 const clerkAppearance = {
@@ -186,20 +208,21 @@ const clerkAppearance = {
 
 function readSettings() {
   try {
-    return { ...settingsDefaults, ...JSON.parse(localStorage.getItem("gitVoorSettings") ?? "{}") };
+    const { initials, ...storedSettings } = JSON.parse(localStorage.getItem("gitVoorSettings") ?? "{}");
+    return { ...settingsDefaults, ...storedSettings };
   } catch {
     return settingsDefaults;
   }
 }
 
-function initialsFromUser(user) {
-  const name = user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || "VA";
-  return name
+function initialsFromUsername(username) {
+  const name = username || "VA";
+  const parts = name
     .split(/[ ._@-]+/)
     .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join("")
+    .map((part) => part[0]);
+
+  return (parts.length > 1 ? parts.slice(0, 2).join("") : name.slice(0, 2))
     .toUpperCase();
 }
 
@@ -221,6 +244,7 @@ export function App() {
 
 function AuthenticatedShell({ copy, settings, setSettings }) {
   const { openSignIn, signOut } = useClerk();
+  const { getToken } = useAuth();
   const { user } = useUser();
   const [activePage, setActivePage] = useState("overview");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -235,7 +259,6 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
       ...current,
       displayName: current.displayName || user.fullName || "",
       email: current.email || user.primaryEmailAddress?.emailAddress || "",
-      initials: current.initials || initialsFromUser(user),
       username: current.username || user.username || "",
     }));
   }, [setSettings, user]);
@@ -246,7 +269,8 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   };
 
   const saveSettings = async () => {
-    localStorage.setItem("gitVoorSettings", JSON.stringify(settings));
+    const { initials, ...settingsToSave } = settings;
+    localStorage.setItem("gitVoorSettings", JSON.stringify(settingsToSave));
 
     try {
       if (user) {
@@ -274,7 +298,36 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
     await signOut();
   };
 
+  const handleDeleteRepository = async () => {
+    if (!window.confirm(copy.settings.confirmRemoveRepository)) {
+      return;
+    }
+
+    try {
+      await deleteRepository(settings.activeRepoId, getToken);
+      setSaveStatus(copy.settings.repositoryDeleted);
+    } catch {
+      setSaveStatus(copy.settings.destructiveError);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!window.confirm(copy.settings.confirmDeleteAccount)) {
+      return;
+    }
+
+    try {
+      await deleteAccountRecords(getToken);
+      localStorage.removeItem("gitVoorSettings");
+      await user?.delete();
+      setSaveStatus(copy.settings.accountDeleted);
+    } catch {
+      setSaveStatus(copy.settings.destructiveError);
+    }
+  };
+
   const appClassName = `app-shell theme-${settings.theme}`;
+  const profileInitials = initialsFromUsername(settings.username || user?.username || user?.primaryEmailAddress?.emailAddress);
 
   return (
     <div className={appClassName}>
@@ -332,7 +385,7 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
               aria-label={copy.account.profileLabel}
               onClick={() => setAccountMenuOpen((open) => !open)}
             >
-              {settings.initials || initialsFromUser(user)}
+              {profileInitials}
             </button>
             {accountMenuOpen ? (
               <div className="account-popover">
@@ -352,6 +405,8 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
         {activePage === "settings" ? (
           <SettingsPage
             copy={copy}
+            onDeleteAccount={handleDeleteAccount}
+            onDeleteRepository={handleDeleteRepository}
             onSave={saveSettings}
             onUpdate={updateSetting}
             saveStatus={saveStatus}
@@ -418,7 +473,7 @@ function EmptySection({ page }) {
   );
 }
 
-function SettingsPage({ copy, onSave, onUpdate, saveStatus, settings }) {
+function SettingsPage({ copy, onDeleteAccount, onDeleteRepository, onSave, onUpdate, saveStatus, settings }) {
   return (
     <section className="settings-page">
       <div className="landing-heading">
@@ -452,7 +507,26 @@ function SettingsPage({ copy, onSave, onUpdate, saveStatus, settings }) {
             <TextField label={copy.settings.displayName} value={settings.displayName} onChange={(value) => onUpdate("displayName", value)} />
             <TextField label={copy.settings.username} value={settings.username} onChange={(value) => onUpdate("username", value)} />
             <TextField disabled help={copy.settings.emailLocked} label={copy.settings.email} type="email" value={settings.email} onChange={() => {}} />
-            <TextField label={copy.settings.initials} value={settings.initials} onChange={(value) => onUpdate("initials", value.slice(0, 3).toUpperCase())} />
+          </div>
+        </SettingsPanel>
+
+        <SettingsPanel eyebrow={copy.settings.dangerEyebrow} title={copy.settings.dangerTitle}>
+          <div className="danger-actions">
+            <p>{copy.settings.dangerDescription}</p>
+            <div className="danger-action-row">
+              <div>
+                <strong>{copy.settings.removeRepository}</strong>
+                <span>{copy.settings.removeRepositoryHelp}</span>
+              </div>
+              <button className="danger-button" type="button" onClick={onDeleteRepository}>{copy.settings.removeRepository}</button>
+            </div>
+            <div className="danger-action-row">
+              <div>
+                <strong>{copy.settings.deleteAccount}</strong>
+                <span>{copy.settings.deleteAccountHelp}</span>
+              </div>
+              <button className="danger-button" type="button" onClick={onDeleteAccount}>{copy.settings.deleteAccount}</button>
+            </div>
           </div>
         </SettingsPanel>
       </div>

@@ -663,6 +663,46 @@ button {
   line-height: 16px;
 }
 
+.danger-actions {
+  display: grid;
+  gap: 12px;
+}
+
+.danger-actions p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.danger-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--canvas);
+  padding: 12px;
+}
+
+.danger-action-row div {
+  display: grid;
+  gap: 2px;
+}
+
+.danger-action-row strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.danger-action-row span {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .secondary-button {
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -679,6 +719,25 @@ button {
 .secondary-button:hover {
   border-color: var(--primary-strong);
   background: var(--surface-container);
+}
+
+.danger-button {
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 180, 171, 0.5);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--error);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  padding: 8px 12px;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.danger-button:hover {
+  border-color: var(--error);
+  background: rgba(255, 180, 171, 0.1);
 }
 
 .analytics-card {
@@ -918,5 +977,14 @@ button {
   .activity-footer {
     flex-direction: column;
     gap: 4px;
+  }
+
+  .danger-action-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .danger-button {
+    width: 100%;
   }
 }
