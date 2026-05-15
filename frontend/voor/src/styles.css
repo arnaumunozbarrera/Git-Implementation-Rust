@@ -25,6 +25,28 @@
   color: var(--text);
 }
 
+.theme-light {
+  --canvas: #f6f8fa;
+  --background: #ffffff;
+  --surface: #ffffff;
+  --surface-low: #f6f8fa;
+  --surface-container: #eef2f7;
+  --surface-high: #e7ecf3;
+  --surface-highest: #d8dee8;
+  --border: #d0d7de;
+  --outline: #57606a;
+  --outline-variant: #afb8c1;
+  --text: #24292f;
+  --text-muted: #57606a;
+  --primary: #0969da;
+  --primary-strong: #0969da;
+  --primary-ink: #ffffff;
+  --warning: #9a6700;
+  --success: #1a7f37;
+  --error: #cf222e;
+  color-scheme: light;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -52,6 +74,8 @@ button {
 
 .app-shell {
   min-height: 100vh;
+  background: var(--canvas);
+  color: var(--text);
 }
 
 .side-nav {
@@ -145,7 +169,7 @@ button {
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--border);
-  background: rgb(13 17 23 / 84%);
+  background: color-mix(in srgb, var(--canvas) 84%, transparent);
   padding: 0 24px;
   backdrop-filter: blur(10px);
 }
@@ -257,9 +281,69 @@ button {
   border-radius: 999px;
   background: var(--surface-container);
   color: var(--primary);
+  cursor: pointer;
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-size: 11px;
   font-weight: 700;
+}
+
+.account-menu {
+  position: relative;
+}
+
+.account-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 220px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  z-index: 60;
+}
+
+.account-summary {
+  display: grid;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  padding: 12px;
+}
+
+.account-summary strong {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.account-summary span {
+  color: var(--outline);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.account-popover button {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 18px;
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.account-popover button:last-child {
+  border-bottom: 0;
+}
+
+.account-popover button:hover {
+  background: var(--surface-container);
+  color: var(--primary-strong);
 }
 
 .main-canvas {
@@ -361,6 +445,11 @@ button {
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--surface);
+}
+
+.settings-stack {
+  display: grid;
+  gap: 16px;
 }
 
 .settings-panel-header {

@@ -31,18 +31,15 @@ const emptyPages = {
 };
 
 const settingsDefaults = {
-  apiBaseUrl: "/api",
-  authToken: "",
   activeRepoId: "main-repo-v2",
   defaultBranch: "main",
-  defaultHead: "",
-  repoName: "main-repo-v2",
-  ownerId: "",
   repoVisibility: "public",
-  repoDescription: "",
-  readmePath: "README.md",
-  tags: "analytics,vcs",
-  syncAction: "pull",
+  language: "en",
+  theme: "dark",
+  displayName: "Voor Admin",
+  username: "voor_admin",
+  email: "admin@gitvoor.local",
+  initials: "VA",
 };
 
 function readSettings() {
@@ -55,8 +52,8 @@ function readSettings() {
 
 export function App() {
   const [activePage, setActivePage] = useState("overview");
-  const [settingsTab, setSettingsTab] = useState("connection");
   const [settings, setSettings] = useState(readSettings);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
 
   const updateSetting = (key, value) => {
     setSettings((current) => ({ ...current, [key]: value }));
@@ -66,8 +63,19 @@ export function App() {
     localStorage.setItem("gitVoorSettings", JSON.stringify(settings));
   };
 
+  const appClassName = `app-shell theme-${settings.theme}`;
+  const labels = settings.language === "es"
+    ? {
+        logout: "Cerrar sesion",
+        changeAccount: "Cambiar cuenta",
+      }
+    : {
+        logout: "Logout",
+        changeAccount: "Change account",
+      };
+
   return (
-    <div className="app-shell">
+    <div className={appClassName}>
       <aside className="side-nav" aria-label="Primary">
         <div className="brand-block">
           <span className="material-symbols-outlined brand-icon">terminal</span>
@@ -114,16 +122,34 @@ export function App() {
           </span>
         </div>
         <div className="top-actions">
-          <div className="avatar" aria-label="User profile">VA</div>
+          <div className="account-menu">
+            <button
+              className="avatar"
+              type="button"
+              aria-expanded={accountMenuOpen}
+              aria-label="User profile"
+              onClick={() => setAccountMenuOpen((open) => !open)}
+            >
+              {settings.initials || "VA"}
+            </button>
+            {accountMenuOpen ? (
+              <div className="account-popover">
+                <div className="account-summary">
+                  <strong>{settings.displayName}</strong>
+                  <span>{settings.email}</span>
+                </div>
+                <button type="button">{labels.changeAccount}</button>
+                <button type="button">{labels.logout}</button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </header>
 
       <main className="main-canvas">
         {activePage === "settings" ? (
           <SettingsPage
-            activeTab={settingsTab}
             onSave={saveSettings}
-            onTabChange={setSettingsTab}
             onUpdate={updateSetting}
             settings={settings}
           />
@@ -150,84 +176,44 @@ function EmptySection({ page }) {
   );
 }
 
-function SettingsPage({ activeTab, onSave, onTabChange, onUpdate, settings }) {
-  const tabs = [
-    { id: "connection", label: "Connection" },
-    { id: "repository", label: "Repository" },
-    { id: "sync", label: "Sync" },
-  ];
-
+function SettingsPage({ onSave, onUpdate, settings }) {
   return (
     <section className="settings-page">
       <div className="landing-heading">
         <p className="label-caps">User Configuration</p>
         <h1>Settings</h1>
-        <p>Basic defaults for the current backend routes and protected API workflows.</p>
+        <p>Application language, visual mode, and profile personalization.</p>
       </div>
 
-      <div className="settings-tabs" role="tablist" aria-label="Settings sections">
-        {tabs.map((tab) => (
-          <button
-            className={`settings-tab ${activeTab === tab.id ? "active" : ""}`}
-            key={tab.id}
-            onClick={() => onTabChange(tab.id)}
-            role="tab"
-            type="button"
-          >
-            {tab.label}
-          </button>
-        ))}
+      <div className="settings-stack">
+        <SettingsPanel eyebrow="Interface" title="Application Preferences">
+          <div className="form-grid">
+            <label className="field-label">
+              Language
+              <select value={settings.language} onChange={(event) => onUpdate("language", event.target.value)}>
+                <option value="en">English</option>
+                <option value="es">Spanish</option>
+              </select>
+            </label>
+            <label className="field-label">
+              Appearance
+              <select value={settings.theme} onChange={(event) => onUpdate("theme", event.target.value)}>
+                <option value="dark">Dark mode</option>
+                <option value="light">Light mode</option>
+              </select>
+            </label>
+          </div>
+        </SettingsPanel>
+
+        <SettingsPanel eyebrow="Profile" title="User Personalization">
+          <div className="form-grid">
+            <TextField label="Display name" value={settings.displayName} onChange={(value) => onUpdate("displayName", value)} />
+            <TextField label="Username" value={settings.username} onChange={(value) => onUpdate("username", value)} />
+            <TextField label="Email" type="email" value={settings.email} onChange={(value) => onUpdate("email", value)} />
+            <TextField label="Profile initials" value={settings.initials} onChange={(value) => onUpdate("initials", value.slice(0, 3).toUpperCase())} />
+          </div>
+        </SettingsPanel>
       </div>
-
-      {activeTab === "connection" ? (
-        <SettingsPanel endpoint="GET /repos, GET /users, GET /repos/:repo_id/*" title="API Connection">
-          <TextField label="API base URL" value={settings.apiBaseUrl} onChange={(value) => onUpdate("apiBaseUrl", value)} />
-          <TextField label="Bearer token" type="password" value={settings.authToken} onChange={(value) => onUpdate("authToken", value)} />
-          <TextField label="Active repo id" value={settings.activeRepoId} onChange={(value) => onUpdate("activeRepoId", value)} />
-        </SettingsPanel>
-      ) : null}
-
-      {activeTab === "repository" ? (
-        <SettingsPanel endpoint="POST /repos/init" title="Repository Defaults">
-          <div className="form-grid">
-            <TextField label="Repository id" value={settings.activeRepoId} onChange={(value) => onUpdate("activeRepoId", value)} />
-            <TextField label="Repository name" value={settings.repoName} onChange={(value) => onUpdate("repoName", value)} />
-            <TextField label="Owner id" value={settings.ownerId} onChange={(value) => onUpdate("ownerId", value)} />
-            <TextField label="Default branch" value={settings.defaultBranch} onChange={(value) => onUpdate("defaultBranch", value)} />
-            <TextField label="Readme path" value={settings.readmePath} onChange={(value) => onUpdate("readmePath", value)} />
-            <TextField label="Tags" value={settings.tags} onChange={(value) => onUpdate("tags", value)} />
-          </div>
-          <label className="field-label">
-            Visibility
-            <select value={settings.repoVisibility} onChange={(event) => onUpdate("repoVisibility", event.target.value)}>
-              <option value="public">Public</option>
-              <option value="private">Private</option>
-            </select>
-          </label>
-          <label className="field-label">
-            Description
-            <textarea value={settings.repoDescription} onChange={(event) => onUpdate("repoDescription", event.target.value)} rows="3" />
-          </label>
-        </SettingsPanel>
-      ) : null}
-
-      {activeTab === "sync" ? (
-        <SettingsPanel endpoint="POST /push, POST /pull, POST /sync-db" title="Sync Defaults">
-          <div className="form-grid">
-            <TextField label="Repository id" value={settings.activeRepoId} onChange={(value) => onUpdate("activeRepoId", value)} />
-            <TextField label="Branch" value={settings.defaultBranch} onChange={(value) => onUpdate("defaultBranch", value)} />
-            <TextField label="Head commit" value={settings.defaultHead} onChange={(value) => onUpdate("defaultHead", value)} />
-          </div>
-          <label className="field-label">
-            Default action
-            <select value={settings.syncAction} onChange={(event) => onUpdate("syncAction", event.target.value)}>
-              <option value="pull">Pull</option>
-              <option value="push">Push</option>
-              <option value="sync-db">Sync DB</option>
-            </select>
-          </label>
-        </SettingsPanel>
-      ) : null}
 
       <div className="settings-actions">
         <button className="secondary-button" type="button" onClick={onSave}>Save Settings</button>
@@ -236,12 +222,12 @@ function SettingsPage({ activeTab, onSave, onTabChange, onUpdate, settings }) {
   );
 }
 
-function SettingsPanel({ children, endpoint, title }) {
+function SettingsPanel({ children, eyebrow, title }) {
   return (
     <section className="settings-panel">
       <header className="settings-panel-header">
         <h2>{title}</h2>
-        <span>{endpoint}</span>
+        <span>{eyebrow}</span>
       </header>
       <div className="settings-panel-body">{children}</div>
     </section>
