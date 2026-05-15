@@ -375,12 +375,14 @@ function LoginPage({ copy, theme }) {
           <h1>{copy.auth.title}</h1>
           <p>{copy.auth.description}</p>
         </div>
-        <SignIn
-          appearance={clerkAppearance}
-          routing="hash"
-          signUpUrl="#/sign-up"
-          fallbackRedirectUrl="/"
-        />
+        <div className="login-form">
+          <SignIn
+            appearance={clerkAppearance}
+            routing="hash"
+            signUpUrl="#/sign-up"
+            fallbackRedirectUrl="/"
+          />
+        </div>
       </section>
     </main>
   );

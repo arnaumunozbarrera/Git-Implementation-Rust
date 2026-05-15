@@ -79,6 +79,8 @@ button {
 }
 
 .login-page {
+  display: grid;
+  place-items: center;
   min-height: 100vh;
   background: var(--canvas);
   color: var(--text);
@@ -87,19 +89,32 @@ button {
 
 .login-shell {
   display: grid;
-  grid-template-columns: minmax(0, 420px) minmax(320px, 420px);
-  gap: 24px;
+  grid-template-columns: 1fr;
+  gap: 28px;
   align-items: start;
-  max-width: 920px;
+  width: min(100%, 520px);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 32px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.24);
   margin: 0 auto;
 }
 
-.login-copy,
 .missing-config-panel {
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--surface);
   padding: 24px;
+}
+
+.login-copy {
+  max-width: none;
+}
+
+.login-form {
+  display: flex;
+  justify-content: center;
 }
 
 .missing-config-panel {
@@ -129,9 +144,9 @@ button {
 }
 
 .clerk-card {
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: 4px;
-  background: var(--surface);
+  background: transparent;
   box-shadow: none;
 }
 
@@ -805,7 +820,7 @@ button {
 
 @media (max-width: 900px) {
   .login-shell {
-    grid-template-columns: 1fr;
+    padding: 28px;
   }
 
   .side-nav {
@@ -858,6 +873,14 @@ button {
 }
 
 @media (max-width: 560px) {
+  .login-page {
+    padding: 24px 12px;
+  }
+
+  .login-shell {
+    padding: 20px;
+  }
+
   .top-bar {
     height: auto;
     min-height: 56px;
