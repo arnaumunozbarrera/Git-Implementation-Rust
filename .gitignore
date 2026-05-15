@@ -24,3 +24,10 @@ target
 
 .voor/
 /.voor/
+
+# Frontend generated files
+frontend/voor/node_modules/
+frontend/voor/dist/
+
+# Local design extraction
+_design_stitch_minimal_vcs_analytics_dashboard/
