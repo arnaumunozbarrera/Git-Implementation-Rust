@@ -1,4 +1,4 @@
-import { SignIn, SignedIn, SignedOut, useAuth, useClerk, useUser } from "@clerk/clerk-react";
+import { SignIn, SignUp, SignedIn, SignedOut, useAuth, useClerk, useUser } from "@clerk/clerk-react";
 import { useEffect, useState } from "react";
 import { deleteAccountRecords, deleteRepository, fetchAnalyticsOverview, fetchRepositories } from "./api.js";
 import { SystemHealthCard } from "./components/SystemHealthCard.jsx";
@@ -25,6 +25,9 @@ const translations = {
       eyebrow: "Secure Workspace",
       title: "Sign in to Git Voor",
       description: "Authenticate with Clerk to access repository telemetry and protected backend routes.",
+      cliLoginComplete: "CLI login complete. You can return to the terminal.",
+      cliLoginError: "Unable to connect this Clerk session to the CLI.",
+      cliLoginPending: "Connecting Clerk session to the CLI...",
       missingTitle: "Clerk is not configured",
       missingDescription: "Set VITE_CLERK_PUBLISHABLE_KEY in the frontend environment to enable login.",
     },
@@ -138,6 +141,9 @@ const translations = {
       eyebrow: "Espacio seguro",
       title: "Inicia sesion en Git Voor",
       description: "Autenticate con Clerk para acceder a la telemetria del repositorio y rutas protegidas del backend.",
+      cliLoginComplete: "Inicio de sesion de CLI completado. Puedes volver al terminal.",
+      cliLoginError: "No se pudo conectar esta sesion de Clerk con la CLI.",
+      cliLoginPending: "Conectando la sesion de Clerk con la CLI...",
       missingTitle: "Clerk no esta configurado",
       missingDescription: "Define VITE_CLERK_PUBLISHABLE_KEY en el entorno del frontend para activar el inicio de sesion.",
     },
@@ -247,6 +253,8 @@ const settingsDefaults = {
   email: "",
 };
 
+let cliLoginAttemptStarted = false;
+
 const clerkAppearance = {
   variables: {
     colorBackground: "#161b22",
@@ -316,15 +324,100 @@ export function App() {
         <LoginPage copy={copy} theme={settings.theme} />
       </SignedOut>
       <SignedIn>
+        <CliLoginBridge copy={copy.auth} />
         <AuthenticatedShell copy={copy} settings={settings} setSettings={setSettings} />
       </SignedIn>
     </>
   );
 }
 
+function cliLoginPortFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const port = Number(params.get("cli_login_port"));
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+    return null;
+  }
+  return port;
+}
+
+function CliLoginBridge({ copy }) {
+  const { getToken } = useAuth();
+  const [status, setStatus] = useState(() => (cliLoginPortFromUrl() ? "pending" : "idle"));
+
+  useEffect(() => {
+    const port = cliLoginPortFromUrl();
+    if (!port) {
+      return;
+    }
+    if (cliLoginAttemptStarted) {
+      return;
+    }
+
+    let active = true;
+    cliLoginAttemptStarted = true;
+
+    async function completeCliLogin() {
+      try {
+        const token = await getToken();
+        if (!token) {
+          throw new Error("Clerk did not return a token");
+        }
+
+        const response = await fetch(`http://127.0.0.1:${port}/auth-token`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ token }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`CLI callback failed with ${response.status}`);
+        }
+
+        if (active) {
+          setStatus("complete");
+          const url = new URL(window.location.href);
+          url.searchParams.delete("cli_login_port");
+          window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+        }
+      } catch {
+        if (active) {
+          setStatus("error");
+        }
+      }
+    }
+
+    completeCliLogin();
+
+    return () => {
+      active = false;
+    };
+  }, [getToken]);
+
+  if (status === "idle") {
+    return null;
+  }
+
+  const message = status === "complete"
+    ? copy.cliLoginComplete
+    : status === "error"
+      ? copy.cliLoginError
+      : copy.cliLoginPending;
+
+  return (
+    <div className={`cli-login-toast cli-login-toast-${status}`} role="status">
+      <span className="material-symbols-outlined" aria-hidden="true">
+        {status === "error" ? "error" : status === "complete" ? "check_circle" : "sync"}
+      </span>
+      <span>{message}</span>
+    </div>
+  );
+}
+
 function AuthenticatedShell({ copy, settings, setSettings }) {
   const { openSignIn, signOut } = useClerk();
-  const { getToken } = useAuth();
+  const { getToken, isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const [activePage, setActivePage] = useState("overview");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
@@ -349,6 +442,10 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   }, [setSettings, user]);
 
   const loadRepositories = () => {
+    if (!isLoaded || !isSignedIn) {
+      return;
+    }
+
     setRepositoryState({ status: "loading", repositories: [], error: null });
     fetchRepositories(getToken)
       .then((repositories) => {
@@ -364,8 +461,10 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   };
 
   useEffect(() => {
-    loadRepositories();
-  }, [getToken]);
+    if (isLoaded && isSignedIn) {
+      loadRepositories();
+    }
+  }, [getToken, isLoaded, isSignedIn]);
 
   const updateSetting = (key, value) => {
     setSaveStatus("");
@@ -548,6 +647,16 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
 }
 
 function LoginPage({ copy, theme }) {
+  const isSignUp = window.location.hash.startsWith("#/sign-up");
+  const redirectUrl = `${window.location.pathname}${window.location.search}`;
+  const clerkProps = {
+    appearance: clerkAppearance,
+    fallbackRedirectUrl: redirectUrl,
+    routing: "hash",
+    signInUrl: redirectUrl,
+    signUpUrl: `${redirectUrl}#/sign-up`,
+  };
+
   return (
     <main className={`login-page theme-${theme}`}>
       <section className="login-shell">
@@ -558,12 +667,7 @@ function LoginPage({ copy, theme }) {
           <p>{copy.auth.description}</p>
         </div>
         <div className="login-form">
-          <SignIn
-            appearance={clerkAppearance}
-            routing="hash"
-            signUpUrl="#/sign-up"
-            fallbackRedirectUrl="/"
-          />
+          {isSignUp ? <SignUp {...clerkProps} /> : <SignIn {...clerkProps} />}
         </div>
       </section>
     </main>

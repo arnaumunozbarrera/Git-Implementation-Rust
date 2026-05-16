@@ -154,8 +154,7 @@ voor cat-file -p <hash>
 ### Remote and auth commands
 
 ```powershell
-voor remote http://localhost:3000
-voor login <clerk_jwt>
+voor login
 voor init-remote
 voor push
 voor pull master
@@ -195,8 +194,11 @@ The backend reads:
 
 The CLI can authenticate through either:
 
-- `voor login <clerk_jwt>`
+- `voor login`, which opens the Clerk login/sign-up flow in the browser
+- automatic browser login when `voor init-remote`, `voor push`, `voor pull`, or `voor sync-db` needs a token
 - `VOOR_AUTH_TOKEN`
+
+`voor init` writes `.voor/config` with `url = http://localhost:3000` by default, so the remote URL does not need to be set manually for local development.
 
 Global config location:
 

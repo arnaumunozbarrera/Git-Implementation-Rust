@@ -2,13 +2,17 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
 export async function fetchWithClerkAuth(path, getToken, options = {}) {
   const token = await getToken();
+  if (!token) {
+    throw new Error("Clerk did not return an auth token");
+  }
+
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...options,
     headers: {
       Accept: "application/json",
       ...(options.body ? { "Content-Type": "application/json" } : {}),
       ...(options.headers ?? {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Authorization: `Bearer ${token}`,
     },
   });
 

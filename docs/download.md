@@ -108,8 +108,7 @@ Once installed, the intended usage is:
 voor init
 voor add .
 voor commit -m "message"
-voor login <clerk_jwt>
-voor remote http://localhost:3000
+voor login
 voor push
 voor pull master
 voor serve
@@ -144,7 +143,7 @@ which voor
 Use:
 
 ```powershell
-voor login <clerk_jwt>
+voor login
 ```
 
 or set:
@@ -165,7 +164,7 @@ voor init
 
 Verify:
 
-- `.voor/config` contains the remote URL
-- auth is available through `voor login` or `VOOR_AUTH_TOKEN`
+- `.voor/config` contains `url = http://localhost:3000`
+- auth is available through browser login or `VOOR_AUTH_TOKEN`
 - the server is reachable
 - Clerk and Supabase configuration are valid on the server side

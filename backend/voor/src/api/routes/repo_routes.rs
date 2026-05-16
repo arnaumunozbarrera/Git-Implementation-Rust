@@ -29,7 +29,7 @@ pub async fn get_repos(
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
-    match get_all_repos(client).await {
+    match get_all_repos(client, &user.user_id).await {
         Ok(repos) => {
             state.monitor.log(
                 LogLevel::Info,

@@ -102,7 +102,7 @@ struct RemoteArgs {
 
 #[derive(Debug, Args)]
 struct LoginArgs {
-    clerk_jwt: String,
+    token: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -201,7 +201,7 @@ fn main() {
             }
         }
         Commands::Remote(args) => cli::remote_server::set_remote(&args.url),
-        Commands::Login(args) => cli::remote_server::login(&args.clerk_jwt),
+        Commands::Login(args) => cli::remote_server::login(args.token.as_deref()),
         Commands::Logout => cli::remote_server::logout(),
         Commands::InitRemote(args) => cli::remote_server::init_remote(args.branch_name.as_deref()),
         Commands::Push(args) => {

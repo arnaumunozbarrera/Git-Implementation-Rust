@@ -1,16 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchAnalyticsOverview } from "../api.js";
 
-const fallbackData = {
-  repo_id: import.meta.env.VITE_REPO_ID ?? "main-repo-v2",
-  branches_count: 12,
-  commits_count: 14820,
-  stars_count: 284,
-  push_count: 732,
-  pull_count: 691,
-  last_push_at: "2026-05-15T14:48:00Z",
-  last_pull_at: "2026-05-15T14:34:00Z",
-  contributors_count: 18,
+const emptyData = {
+  repo_id: "No data available",
+  branches_count: 0,
+  commits_count: 0,
+  stars_count: 0,
+  push_count: 0,
+  pull_count: 0,
+  last_push_at: null,
+  last_pull_at: null,
+  contributors_count: 0,
 };
 
 function compactNumber(value) {
@@ -35,8 +35,7 @@ function formatActivityTime(value) {
   }).format(date);
 }
 
-export function AnalyticsOverviewCard() {
-  const repoId = import.meta.env.VITE_REPO_ID ?? "main-repo-v2";
+export function AnalyticsOverviewCard({ getToken, repoId }) {
   const [state, setState] = useState({
     status: "loading",
     data: null,
@@ -46,7 +45,15 @@ export function AnalyticsOverviewCard() {
   useEffect(() => {
     let active = true;
 
-    fetchAnalyticsOverview(repoId)
+    if (!repoId) {
+      setState({ status: "empty", data: null, error: null });
+      return () => {
+        active = false;
+      };
+    }
+
+    setState({ status: "loading", data: null, error: null });
+    fetchAnalyticsOverview(repoId, getToken)
       .then((data) => {
         if (active) {
           setState({ status: "ready", data, error: null });
@@ -54,16 +61,16 @@ export function AnalyticsOverviewCard() {
       })
       .catch((error) => {
         if (active) {
-          setState({ status: "fallback", data: fallbackData, error: error.message });
+          setState({ status: "unavailable", data: null, error: error.message });
         }
       });
 
     return () => {
       active = false;
     };
-  }, [repoId]);
+  }, [getToken, repoId]);
 
-  const data = state.data ?? fallbackData;
+  const data = state.data ?? { ...emptyData, repo_id: repoId ?? emptyData.repo_id };
   const syncRatio = useMemo(() => {
     const total = data.push_count + data.pull_count;
     if (total === 0) {
@@ -81,7 +88,7 @@ export function AnalyticsOverviewCard() {
           <h2>{data.repo_id}</h2>
         </div>
         <span className={`status-badge ${state.status === "ready" ? "status-live" : "status-sample"}`}>
-          {state.status === "ready" ? "LIVE" : "SAMPLE"}
+          {state.status === "ready" ? "LIVE" : "NO DATA"}
         </span>
       </header>
 
@@ -108,7 +115,7 @@ export function AnalyticsOverviewCard() {
         <div>
           <span className="metric-label">Push / Pull Ratio</span>
           <p className="mono-line">
-            {compactNumber(data.push_count)} push · {compactNumber(data.pull_count)} pull
+            {compactNumber(data.push_count)} push / {compactNumber(data.pull_count)} pull
           </p>
         </div>
         <strong className="sync-value">{syncRatio}%</strong>
@@ -122,7 +129,7 @@ export function AnalyticsOverviewCard() {
         <span>last pull {formatActivityTime(data.last_pull_at)}</span>
       </footer>
 
-      {state.status === "fallback" ? <p className="api-note">{state.error}</p> : null}
+      {state.status === "unavailable" ? <p className="api-note">{state.error}</p> : null}
     </section>
   );
 }

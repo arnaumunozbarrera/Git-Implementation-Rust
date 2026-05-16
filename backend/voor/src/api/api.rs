@@ -1,6 +1,10 @@
 use axum::{
     extract::Request,
+    http::{
+        HeaderValue, Method, StatusCode,
+    },
     middleware,
+    response::Response,
     routing::{delete, get, post},
     Router,
 };
@@ -118,6 +122,7 @@ pub async fn api() {
     let app = Router::new()
         .route("/health", get(get_health))
         .merge(protected)
+        .layer(middleware::from_fn(add_cors_headers))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             track_api_requests,
@@ -137,6 +142,45 @@ pub async fn api() {
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     monitor.log(LogLevel::Info, "backend", "service-ready", "All service monitors attached");
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn add_cors_headers(
+    request: Request,
+    next: middleware::Next,
+) -> Response {
+    if request.method() == Method::OPTIONS {
+        let mut response = Response::new(axum::body::Body::empty());
+        *response.status_mut() = StatusCode::NO_CONTENT;
+        insert_cors_headers(response.headers_mut());
+        return response;
+    }
+
+    let mut response = next.run(request).await;
+    insert_cors_headers(response.headers_mut());
+    response
+}
+
+fn insert_cors_headers(headers: &mut axum::http::HeaderMap) {
+    headers.insert(
+        axum::http::header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        HeaderValue::from_static("*"),
+    );
+    headers.insert(
+        axum::http::header::ACCESS_CONTROL_ALLOW_METHODS,
+        HeaderValue::from_static("GET, POST, DELETE, OPTIONS"),
+    );
+    headers.insert(
+        axum::http::header::ACCESS_CONTROL_ALLOW_HEADERS,
+        HeaderValue::from_static("authorization, content-type, accept"),
+    );
+    headers.insert(
+        axum::http::header::ACCESS_CONTROL_MAX_AGE,
+        HeaderValue::from_static("86400"),
+    );
+    headers.insert(
+        axum::http::header::VARY,
+        HeaderValue::from_static("origin, access-control-request-method, access-control-request-headers"),
+    );
 }
 
 async fn track_api_requests(

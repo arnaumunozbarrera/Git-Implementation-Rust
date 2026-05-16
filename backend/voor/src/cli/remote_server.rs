@@ -1,7 +1,13 @@
 use std::fs;
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::path::Path;
+use std::process::Command;
+use std::time::Duration;
 
 use reqwest::blocking::{Client, RequestBuilder};
 use reqwest::StatusCode;
+use serde::Deserialize;
 
 use crate::api::models::{InitRepoRequest, InitRepoResponse};
 use crate::cli::branch;
@@ -13,6 +19,8 @@ use crate::utils::sync::{
 };
 
 const CONFIG_PATH: &str = ".voor/config";
+const DEFAULT_REMOTE_URL: &str = "http://localhost:3000";
+const DEFAULT_FRONTEND_URL: &str = "http://localhost:5173";
 
 #[derive(Default)]
 struct RemoteConfig {
@@ -25,7 +33,7 @@ struct RemoteConfig {
 pub fn set_remote(url: &str) {
     let result = fs_ops::with_repo_lock("remote-set", || {
         let mut config = read_config().unwrap_or_default();
-        config.url = Some(url.trim().trim_end_matches('/').to_string());
+        config.url = Some(normalize_remote_url(url));
         write_config(&config)
     });
 
@@ -35,8 +43,11 @@ pub fn set_remote(url: &str) {
     }
 }
 
-pub fn login(token: &str) {
-    let result = persist_auth_token(token);
+pub fn login(token: Option<&str>) {
+    let result = match token {
+        Some(token) => persist_auth_token(token),
+        None => login_with_browser(true).and_then(|token| persist_auth_token(&token)),
+    };
 
     match result {
         Ok(path) => println!("[INFO] Stored auth token in {}", path),
@@ -54,6 +65,11 @@ pub fn logout() {
 }
 
 pub fn init_remote(branch_name: Option<&str>) {
+    if let Err(error) = ensure_auth_token_available() {
+        println!("{}", error);
+        return;
+    }
+
     let result = fs_ops::with_repo_lock("init-remote", || init_remote_locked(branch_name));
     if let Err(error) = result {
         println!("{}", error);
@@ -61,6 +77,11 @@ pub fn init_remote(branch_name: Option<&str>) {
 }
 
 pub fn push_branch(branch_name: &str) {
+    if let Err(error) = ensure_auth_token_available() {
+        println!("{}", error);
+        return;
+    }
+
     let result = fs_ops::with_repo_lock("push-snapshot", || push_branch_locked(branch_name));
     if let Err(error) = result {
         println!("{}", error);
@@ -68,6 +89,11 @@ pub fn push_branch(branch_name: &str) {
 }
 
 pub fn pull_branch(branch_name: &str) {
+    if let Err(error) = ensure_auth_token_available() {
+        println!("{}", error);
+        return;
+    }
+
     let result = fs_ops::with_repo_lock("pull", || pull_branch_locked(branch_name));
     if let Err(error) = result {
         println!("{}", error);
@@ -75,6 +101,11 @@ pub fn pull_branch(branch_name: &str) {
 }
 
 pub fn sync_db(branch_name: Option<&str>) {
+    if let Err(error) = ensure_auth_token_available() {
+        println!("{}", error);
+        return;
+    }
+
     let result = fs_ops::with_repo_lock("sync-db", || {
         let branch_name = branch::current_branch_or(branch_name);
         sync_db_internal(&branch_name, true)
@@ -268,9 +299,19 @@ fn authorized(builder: RequestBuilder, token: &str) -> RequestBuilder {
 }
 
 fn get_remote_url() -> Result<String, String> {
-    read_config()?
+    let mut config = read_config().unwrap_or_default();
+    let remote = config
         .url
-        .ok_or_else(|| "[ERROR] Missing remote url in .voor/config".to_string())
+        .clone()
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_REMOTE_URL.to_string());
+
+    if config.url.as_deref() != Some(remote.as_str()) {
+        config.url = Some(remote.clone());
+        write_config(&config)?;
+    }
+
+    Ok(remote)
 }
 
 fn get_auth_token() -> Result<String, String> {
@@ -287,10 +328,20 @@ fn get_auth_token() -> Result<String, String> {
         }
     }
 
-    read_config()?
-        .auth_token
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| "[ERROR] Missing auth token. Run `voor login <clerk_jwt>` or set VOOR_AUTH_TOKEN".to_string())
+    if let Some(value) = read_config().unwrap_or_default().auth_token {
+        if !value.trim().is_empty() {
+            return Ok(value.trim().to_string());
+        }
+    }
+
+    println!("[INFO] No saved Clerk token found. Opening browser login...");
+    let token = login_with_browser(false)?;
+    persist_auth_token_global(&token)?;
+    Ok(token)
+}
+
+fn ensure_auth_token_available() -> Result<(), String> {
+    get_auth_token().map(|_| ())
 }
 
 fn repo_id_from_config_or_cwd() -> Result<String, String> {
@@ -304,7 +355,7 @@ fn repo_id_from_config_or_cwd() -> Result<String, String> {
 fn persist_repo_mapping(repo_id: &str) -> Result<(), String> {
     let mut config = read_config().unwrap_or_default();
     if config.url.is_none() {
-        config.url = Some("http://localhost:3000".to_string());
+        config.url = Some(DEFAULT_REMOTE_URL.to_string());
     }
     config.repo_id = Some(repo_id.trim().to_string());
     write_config(&config)
@@ -335,10 +386,8 @@ fn write_config(config: &RemoteConfig) -> Result<(), String> {
     let url = config
         .url
         .as_deref()
-        .unwrap_or("http://localhost:3000")
-        .trim()
-        .trim_end_matches('/')
-        .to_string();
+        .map(normalize_remote_url)
+        .unwrap_or_else(|| DEFAULT_REMOTE_URL.to_string());
 
     let mut content = format!("[remote \"origin\"]\nurl = {}\n", url);
     if let Some(repo_id) = config.repo_id.as_deref() {
@@ -369,6 +418,12 @@ fn print_database_action(database_action: Option<&str>) {
 }
 
 fn persist_auth_token(token: &str) -> Result<String, String> {
+    let path = persist_auth_token_global(token)?;
+    migrate_local_auth_token(token.trim())?;
+    Ok(path)
+}
+
+fn persist_auth_token_global(token: &str) -> Result<String, String> {
     let trimmed = token.trim();
     if trimmed.is_empty() {
         return Err("[ERROR] Refusing to store an empty auth token".to_string());
@@ -378,8 +433,6 @@ fn persist_auth_token(token: &str) -> Result<String, String> {
     config.auth_token = Some(trimmed.to_string());
     let path = app_config::user_config_path()?;
     app_config::save_user_config(&config)?;
-
-    migrate_local_auth_token(trimmed)?;
     Ok(path.display().to_string())
 }
 
@@ -394,6 +447,10 @@ fn clear_auth_token() -> Result<String, String> {
 }
 
 fn migrate_local_auth_token(token: &str) -> Result<(), String> {
+    if !Path::new(CONFIG_PATH).exists() {
+        return Ok(());
+    }
+
     let result = fs_ops::with_repo_lock("auth-login", || {
         let mut config = read_config().unwrap_or_default();
         config.auth_token = Some(token.to_string());
@@ -408,6 +465,10 @@ fn migrate_local_auth_token(token: &str) -> Result<(), String> {
 }
 
 fn clear_local_auth_token() -> Result<(), String> {
+    if !Path::new(CONFIG_PATH).exists() {
+        return Ok(());
+    }
+
     let result = fs_ops::with_repo_lock("auth-logout", || {
         let mut config = read_config().unwrap_or_default();
         config.auth_token = None;
@@ -418,5 +479,197 @@ fn clear_local_auth_token() -> Result<(), String> {
         Ok(_) => Ok(()),
         Err(error) if error.contains("Timed out waiting for repository lock") => Err(error),
         Err(_) => Ok(()),
+    }
+}
+
+fn normalize_remote_url(url: &str) -> String {
+    let trimmed = url.trim().trim_end_matches('/');
+    if trimmed.is_empty() {
+        DEFAULT_REMOTE_URL.to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+#[derive(Deserialize)]
+struct CliLoginPayload {
+    token: String,
+}
+
+fn login_with_browser(print_success_page_hint: bool) -> Result<String, String> {
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .map_err(|error| format!("[ERROR] Unable to start local login callback: {}", error))?;
+    let port = listener
+        .local_addr()
+        .map_err(|error| format!("[ERROR] Unable to read local login callback address: {}", error))?
+        .port();
+    listener
+        .set_nonblocking(false)
+        .map_err(|error| format!("[ERROR] Unable to configure login callback: {}", error))?;
+
+    let login_url = format!("{}/?cli_login_port={}", frontend_url(), port);
+    open_browser(&login_url)?;
+    println!("[INFO] Browser opened for Clerk login: {}", login_url);
+    println!("[INFO] Waiting for Clerk to return a session token...");
+
+    for stream in listener.incoming() {
+        let mut stream = stream.map_err(|error| format!("[ERROR] Login callback failed: {}", error))?;
+        match read_login_callback(&mut stream)? {
+            LoginCallback::Options => {
+                write_http_response(&mut stream, "204 No Content", "", "text/plain")?;
+            }
+            LoginCallback::Token(token) => {
+                write_http_response(
+                    &mut stream,
+                    "200 OK",
+                    "{\"ok\":true}",
+                    "application/json",
+                )?;
+                if print_success_page_hint {
+                    println!("[INFO] Clerk login completed");
+                }
+                return Ok(token);
+            }
+            LoginCallback::Ignored => {
+                write_http_response(
+                    &mut stream,
+                    "404 Not Found",
+                    "Voor CLI login callback is waiting for a Clerk token.",
+                    "text/plain",
+                )?;
+            }
+        }
+    }
+
+    Err("[ERROR] Login callback stopped before receiving a Clerk token".to_string())
+}
+
+enum LoginCallback {
+    Options,
+    Token(String),
+    Ignored,
+}
+
+fn read_login_callback(stream: &mut TcpStream) -> Result<LoginCallback, String> {
+    stream
+        .set_read_timeout(Some(Duration::from_secs(30)))
+        .map_err(|error| format!("[ERROR] Unable to configure login callback timeout: {}", error))?;
+
+    let mut buffer = Vec::new();
+    let mut temp = [0_u8; 1024];
+    let mut header_end = None;
+    let mut content_length = 0_usize;
+
+    loop {
+        let read = stream
+            .read(&mut temp)
+            .map_err(|error| format!("[ERROR] Unable to read login callback: {}", error))?;
+        if read == 0 {
+            break;
+        }
+        buffer.extend_from_slice(&temp[..read]);
+
+        if header_end.is_none() {
+            if let Some(position) = find_header_end(&buffer) {
+                header_end = Some(position);
+                let headers = String::from_utf8_lossy(&buffer[..position]);
+                content_length = parse_content_length(&headers);
+            }
+        }
+
+        if let Some(position) = header_end {
+            if buffer.len() >= position + 4 + content_length {
+                break;
+            }
+        }
+    }
+
+    let position = header_end.ok_or_else(|| "[ERROR] Invalid login callback request".to_string())?;
+    let headers = String::from_utf8_lossy(&buffer[..position]);
+    let request_line = headers.lines().next().unwrap_or_default();
+
+    if request_line.starts_with("OPTIONS ") {
+        return Ok(LoginCallback::Options);
+    }
+
+    if !request_line.starts_with("POST /auth-token ") {
+        return Ok(LoginCallback::Ignored);
+    }
+
+    let body_start = position + 4;
+    let body_end = body_start + content_length;
+    let body = std::str::from_utf8(&buffer[body_start..body_end])
+        .map_err(|error| format!("[ERROR] Login callback body is not UTF-8: {}", error))?;
+    let payload: CliLoginPayload = serde_json::from_str(body)
+        .map_err(|error| format!("[ERROR] Invalid login callback payload: {}", error))?;
+    let token = payload.token.trim();
+    if token.is_empty() {
+        return Err("[ERROR] Clerk returned an empty token".to_string());
+    }
+
+    Ok(LoginCallback::Token(token.to_string()))
+}
+
+fn write_http_response(
+    stream: &mut TcpStream,
+    status: &str,
+    body: &str,
+    content_type: &str,
+) -> Result<(), String> {
+    let response = format!(
+        "HTTP/1.1 {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Headers: content-type\r\nAccess-Control-Allow-Methods: POST, OPTIONS\r\nAccess-Control-Allow-Private-Network: true\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        status,
+        content_type,
+        body.len(),
+        body
+    );
+    stream
+        .write_all(response.as_bytes())
+        .map_err(|error| format!("[ERROR] Unable to write login callback response: {}", error))
+}
+
+fn find_header_end(buffer: &[u8]) -> Option<usize> {
+    buffer
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+}
+
+fn parse_content_length(headers: &str) -> usize {
+    headers
+        .lines()
+        .find_map(|line| {
+            let (name, value) = line.split_once(':')?;
+            if name.eq_ignore_ascii_case("content-length") {
+                value.trim().parse::<usize>().ok()
+            } else {
+                None
+            }
+        })
+        .unwrap_or(0)
+}
+
+fn frontend_url() -> String {
+    std::env::var("VOOR_FRONTEND_URL")
+        .ok()
+        .map(|value| normalize_remote_url(&value))
+        .unwrap_or_else(|| DEFAULT_FRONTEND_URL.to_string())
+}
+
+fn open_browser(url: &str) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    let result = Command::new("rundll32")
+        .args(["url.dll,FileProtocolHandler", url])
+        .status();
+
+    #[cfg(target_os = "macos")]
+    let result = Command::new("open").arg(url).status();
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let result = Command::new("xdg-open").arg(url).status();
+
+    match result {
+        Ok(status) if status.success() => Ok(()),
+        Ok(status) => Err(format!("[ERROR] Browser opener exited with status {}", status)),
+        Err(error) => Err(format!("[ERROR] Unable to open browser: {}", error)),
     }
 }

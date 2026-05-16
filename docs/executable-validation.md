@@ -97,25 +97,24 @@ Expected result:
 ### 5. Validate auth commands
 
 ```powershell
-voor login <clerk_jwt>
+voor login
 voor logout
 ```
 
 Expected result:
 
-- login stores the token in the platform user config
+- login opens the Clerk login/sign-up flow and stores the returned token in the platform user config
 - logout removes it cleanly
 
 ### 6. Validate remote configuration
 
 ```powershell
-voor remote http://localhost:3000
 voor init-remote
 ```
 
 Expected result:
 
-- `.voor/config` stores the remote URL
+- `.voor/config` stores `url = http://localhost:3000` after `voor init`
 - remote initialization succeeds when the server is available and auth is valid
 
 ### 7. Validate push and pull

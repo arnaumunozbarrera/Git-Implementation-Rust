@@ -3,10 +3,12 @@ use crate::api::models::{DeleteActionResponse, InitRepoRequest, InitRepoResponse
 
 pub async fn get_all_repos(
     client: &SupabaseClient,
+    owner_id: &str,
 ) -> Result<Vec<Repository>, sqlx::Error> {
     let repos = sqlx::query_as::<_, Repository>(
-        "SELECT * FROM repositories"
+        "SELECT * FROM repositories WHERE owner_id = $1 ORDER BY created_at DESC"
     )
+    .bind(owner_id)
     .fetch_all(&client.pool)
     .await?;
 

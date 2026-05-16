@@ -189,6 +189,33 @@ button {
   color: var(--text);
 }
 
+.cli-login-toast {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 100;
+  display: flex;
+  max-width: min(360px, calc(100vw - 32px));
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 12px 14px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.cli-login-toast-complete {
+  border-color: var(--success);
+}
+
+.cli-login-toast-error {
+  border-color: var(--error);
+}
+
 .side-nav {
   position: fixed;
   inset: 0 auto 0 0;
