@@ -127,13 +127,8 @@ struct DatabaseSyncOutcome {
 }
 
 fn validate_repo_and_branch(repo_id: &str, branch: &str, head: &str) -> Result<(), String> {
-    let expected_repo = sync::repo_id_from_cwd()?;
-    if repo_id.trim() != expected_repo {
-        return Err(format!(
-            "[ERROR] Unknown repo '{}', expected '{}'",
-            repo_id.trim(),
-            expected_repo
-        ));
+    if repo_id.trim().is_empty() {
+        return Err("[ERROR] Missing repo_id".to_string());
     }
 
     if branch.trim().is_empty() {
@@ -163,7 +158,7 @@ async fn sync_objects_to_database(
         });
     };
 
-    ensure_repo_exists(client, repo_id).await?;
+    ensure_repo_owner(client, repo_id, user_id).await?;
     ensure_user_exists(client, user_id).await?;
 
     let mut parsed_objects = Vec::with_capacity(objects.len());
@@ -253,16 +248,28 @@ async fn sync_objects_to_database(
     })
 }
 
-async fn ensure_repo_exists(client: &SupabaseClient, repo_id: &str) -> Result<(), String> {
-    let repo_exists: bool =
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM repositories WHERE id = $1)")
-            .bind(repo_id)
-            .fetch_one(&client.pool)
-            .await
-            .map_err(|error| format!("[ERROR] Failed to verify repository '{}': {}", repo_id, error))?;
+async fn ensure_repo_owner(
+    client: &SupabaseClient,
+    repo_id: &str,
+    user_id: &str,
+) -> Result<(), String> {
+    let owner_id: Option<String> = sqlx::query_scalar(
+        "SELECT owner_id FROM repositories WHERE id = $1",
+    )
+    .bind(repo_id)
+    .fetch_optional(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to verify repository '{}': {}", repo_id, error))?;
 
-    if !repo_exists {
+    let Some(owner_id) = owner_id else {
         return Err(format!("[ERROR] Repository '{}' not found", repo_id));
+    };
+
+    if owner_id != user_id {
+        return Err(format!(
+            "[ERROR] User '{}' cannot sync repository '{}'",
+            user_id, repo_id
+        ));
     }
 
     Ok(())

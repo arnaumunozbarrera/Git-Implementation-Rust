@@ -25,9 +25,9 @@ const translations = {
       eyebrow: "Secure Workspace",
       title: "Sign in to Git Voor",
       description: "Authenticate with Clerk to access repository telemetry and protected backend routes.",
-      cliLoginComplete: "CLI login complete. You can return to the terminal.",
-      cliLoginError: "Unable to connect this Clerk session to the CLI.",
-      cliLoginPending: "Connecting Clerk session to the CLI...",
+      cliLoginComplete: "Local sync complete. You can return to the terminal.",
+      cliLoginError: "Unable to sync server locally.",
+      cliLoginPending: "Syncing server locally...",
       missingTitle: "Clerk is not configured",
       missingDescription: "Set VITE_CLERK_PUBLISHABLE_KEY in the frontend environment to enable login.",
     },
@@ -46,20 +46,10 @@ const translations = {
       settings: "Settings",
     },
     pages: {
-      overview: {
-        eyebrow: "Repository Control Plane",
-        title: "Overview",
-        description: "This workspace is reserved for repository summary modules.",
-        stats: {
-          totalCommits: "Total Commits",
-          contributors: "contributors",
-          lastActivity: "Last Activity",
-          lastActivityContext: "latest repository event",
-          repositorySize: "Repository Size",
-          objects: "objects",
-          loading: "Loading...",
-          noData: "No data available",
-        },
+      home: {
+        eyebrow: "System Control",
+        title: "Home",
+        description: "Backend availability and service telemetry.",
         health: {
           eyebrow: "System Health",
           title: "Service Health",
@@ -75,6 +65,21 @@ const translations = {
             unknown: "Unknown",
             warning: "Warning",
           },
+        },
+      },
+      overview: {
+        eyebrow: "Repository Control Plane",
+        title: "Overview",
+        description: "This workspace is reserved for repository summary modules.",
+        stats: {
+          totalCommits: "Total Commits",
+          contributors: "contributors",
+          lastActivity: "Last Activity",
+          lastActivityContext: "latest repository event",
+          repositorySize: "Repository Size",
+          objects: "objects",
+          loading: "Loading...",
+          noData: "No data available",
         },
       },
       activity: {
@@ -141,9 +146,9 @@ const translations = {
       eyebrow: "Espacio seguro",
       title: "Inicia sesion en Git Voor",
       description: "Autenticate con Clerk para acceder a la telemetria del repositorio y rutas protegidas del backend.",
-      cliLoginComplete: "Inicio de sesion de CLI completado. Puedes volver al terminal.",
-      cliLoginError: "No se pudo conectar esta sesion de Clerk con la CLI.",
-      cliLoginPending: "Conectando la sesion de Clerk con la CLI...",
+      cliLoginComplete: "Sincronizacion local completada. Puedes volver al terminal.",
+      cliLoginError: "No se pudo sincronizar el servidor localmente.",
+      cliLoginPending: "Sincronizando servidor localmente...",
       missingTitle: "Clerk no esta configurado",
       missingDescription: "Define VITE_CLERK_PUBLISHABLE_KEY en el entorno del frontend para activar el inicio de sesion.",
     },
@@ -162,20 +167,10 @@ const translations = {
       settings: "Ajustes",
     },
     pages: {
-      overview: {
-        eyebrow: "Panel de control del repositorio",
-        title: "Resumen",
-        description: "Este espacio esta reservado para los modulos de resumen del repositorio.",
-        stats: {
-          totalCommits: "Commits totales",
-          contributors: "colaboradores",
-          lastActivity: "Ultima actividad",
-          lastActivityContext: "ultimo evento del repositorio",
-          repositorySize: "Tamano del repositorio",
-          objects: "objetos",
-          loading: "Cargando...",
-          noData: "No hay datos disponibles",
-        },
+      home: {
+        eyebrow: "Control del sistema",
+        title: "Inicio",
+        description: "Disponibilidad del backend y telemetria de servicios.",
         health: {
           eyebrow: "Salud del sistema",
           title: "Estado del servicio",
@@ -191,6 +186,21 @@ const translations = {
             unknown: "Desconocido",
             warning: "Aviso",
           },
+        },
+      },
+      overview: {
+        eyebrow: "Panel de control del repositorio",
+        title: "Resumen",
+        description: "Este espacio esta reservado para los modulos de resumen del repositorio.",
+        stats: {
+          totalCommits: "Commits totales",
+          contributors: "colaboradores",
+          lastActivity: "Ultima actividad",
+          lastActivityContext: "ultimo evento del repositorio",
+          repositorySize: "Tamano del repositorio",
+          objects: "objetos",
+          loading: "Cargando...",
+          noData: "No hay datos disponibles",
         },
       },
       activity: {
@@ -395,6 +405,18 @@ function CliLoginBridge({ copy }) {
     };
   }, [getToken]);
 
+  useEffect(() => {
+    if (status === "idle") {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setStatus("idle");
+    }, status === "pending" ? 5000 : 3500);
+
+    return () => window.clearTimeout(timeout);
+  }, [status]);
+
   if (status === "idle") {
     return null;
   }
@@ -419,7 +441,7 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   const { openSignIn, signOut } = useClerk();
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
-  const [activePage, setActivePage] = useState("overview");
+  const [activePage, setActivePage] = useState("home");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const [repositoryState, setRepositoryState] = useState({
@@ -549,12 +571,16 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   return (
     <div className={appClassName}>
       <aside className="side-nav" aria-label="Primary">
-        <div className="brand-block">
+        <button
+          className={`brand-block ${activePage === "home" ? "active" : ""}`}
+          onClick={() => setActivePage("home")}
+          type="button"
+        >
           <span className="material-symbols-outlined brand-icon">terminal</span>
           <div>
             <div className="brand-title">Git Voor</div>
           </div>
-        </div>
+        </button>
 
         <nav className="nav-list">
           {navItems.map((item) => (
@@ -626,6 +652,8 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
             copy={copy.service}
             onRetry={loadRepositories}
           />
+        ) : activePage === "home" ? (
+          <HomePage page={copy.pages.home} />
         ) : activePage === "settings" ? (
           <SettingsPage
             copy={copy}
@@ -671,6 +699,20 @@ function LoginPage({ copy, theme }) {
         </div>
       </section>
     </main>
+  );
+}
+
+function HomePage({ page }) {
+  return (
+    <section className="workspace-section">
+      <div className="landing-heading">
+        <p className="label-caps">{page.eyebrow}</p>
+        <h1>{page.title}</h1>
+        <p>{page.description}</p>
+      </div>
+
+      <SystemHealthCard copy={page.health} />
+    </section>
   );
 }
 
@@ -854,8 +896,6 @@ function OverviewPage({ getToken, page, repoId }) {
           meta={isReady ? `${compactNumber(data.object_count)} ${stats.objects}` : ""}
         />
       </div>
-
-      <SystemHealthCard copy={page.health} />
     </section>
   );
 }

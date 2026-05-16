@@ -6,7 +6,11 @@ pub async fn get_all_repos(
     owner_id: &str,
 ) -> Result<Vec<Repository>, sqlx::Error> {
     let repos = sqlx::query_as::<_, Repository>(
-        "SELECT * FROM repositories WHERE owner_id = $1 ORDER BY created_at DESC"
+        "SELECT id, name, owner_id, is_private, description, tags, default_branch,
+                stars_count, readme_path, theme, created_at::text AS created_at
+         FROM repositories
+         WHERE owner_id = $1
+         ORDER BY created_at DESC"
     )
     .bind(owner_id)
     .fetch_all(&client.pool)

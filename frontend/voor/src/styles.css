@@ -231,7 +231,24 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
+  border: 0;
+  border-left: 2px solid transparent;
+  background: transparent;
   padding: 24px;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.brand-block:hover,
+.brand-block.active {
+  background: var(--surface);
+}
+
+.brand-block.active {
+  border-left-color: var(--primary-strong);
 }
 
 .brand-icon {

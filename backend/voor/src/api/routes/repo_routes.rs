@@ -13,7 +13,7 @@ use crate::utils::service_monitor::LogLevel;
 pub async fn get_repos(
     State(state): State<AppState>,
     Extension(user): Extension<AuthenticatedUser>,
-) -> Result<Json<Vec<Repository>>, StatusCode> {
+) -> Result<Json<Vec<Repository>>, (StatusCode, String)> {
     let Some(client) = state.client.as_ref() else {
         state.monitor.log(
             LogLevel::Warn,
@@ -21,12 +21,15 @@ pub async fn get_repos(
             "repos-unavailable",
             "Repository listing requested without configured database client",
         );
-        return Err(StatusCode::SERVICE_UNAVAILABLE);
+        return Err((
+            StatusCode::SERVICE_UNAVAILABLE,
+            "[ERROR] Supabase client not configured".to_string(),
+        ));
     };
 
     if let Err(error) = auth::ensure_user_exists(Some(client), &user).await {
         state.monitor.log(LogLevel::Warn, "backend", "user-sync-failed", &error);
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+        return Err((StatusCode::INTERNAL_SERVER_ERROR, error));
     }
 
     match get_all_repos(client, &user.user_id).await {
@@ -39,7 +42,13 @@ pub async fn get_repos(
             );
             Ok(Json(repos))
         }
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+        Err(error) => {
+            let message = format!("[ERROR] Failed to list repositories: {}", error);
+            state
+                .monitor
+                .log(LogLevel::Error, "backend", "repos-list-failed", &message);
+            Err((StatusCode::INTERNAL_SERVER_ERROR, message))
+        }
     }
 }
 

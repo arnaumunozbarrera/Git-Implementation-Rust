@@ -13,7 +13,6 @@ use crate::api::models::{
     RepositoryStorageSummary, UserSummary,
 };
 use crate::utils::object_store::{self, ObjectType};
-use crate::utils::sync;
 
 const DEFAULT_LIMIT: usize = 25;
 const MAX_LIMIT: usize = 100;
@@ -138,7 +137,7 @@ pub async fn get_commit_history(
             c.hash,
             c.parent_hash,
             c.message,
-            c.created_at,
+            c.created_at::text AS created_at,
             COALESCE(cm.additions, 0) AS additions,
             COALESCE(cm.deletions, 0) AS deletions,
             u.id AS author_id,
@@ -206,7 +205,7 @@ pub async fn get_commit_graph(
             c.hash,
             c.parent_hash,
             c.message,
-            c.created_at,
+            c.created_at::text AS created_at,
             u.id AS author_id,
             u.username,
             u.email
@@ -322,7 +321,7 @@ pub async fn get_activity_feed(
     ensure_local_repo(repo_id)?;
     let limit_with_buffer = limit + offset + 1;
     let logs = sqlx::query(
-        "SELECT l.action, l.metadata, l.created_at, u.id AS actor_id, u.username, u.email
+        "SELECT l.action, l.metadata, l.created_at::text AS created_at, u.id AS actor_id, u.username, u.email
          FROM repo_access_logs l
          JOIN users u ON u.id = l.user_id
          WHERE l.repo_id = $1
@@ -336,7 +335,7 @@ pub async fn get_activity_feed(
     .map_err(|error| format!("[ERROR] Failed to load activity logs for '{}': {}", repo_id, error))?;
 
     let commits = sqlx::query(
-        "SELECT cm.commit_hash, cm.message, cm.additions, cm.deletions, cm.created_at,
+        "SELECT cm.commit_hash, cm.message, cm.additions, cm.deletions, cm.created_at::text AS created_at,
                 u.id AS actor_id, u.username, u.email
          FROM commits_metadata cm
          JOIN users u ON u.id = cm.author_id
@@ -476,7 +475,12 @@ fn map_commit_summary_row(row: sqlx::postgres::PgRow) -> Result<CommitSummary, S
 }
 
 async fn load_repository(client: &SupabaseClient, repo_id: &str) -> Result<Repository, String> {
-    sqlx::query_as::<_, Repository>("SELECT * FROM repositories WHERE id = $1")
+    sqlx::query_as::<_, Repository>(
+        "SELECT id, name, owner_id, is_private, description, tags, default_branch,
+                stars_count, readme_path, theme, created_at::text AS created_at
+         FROM repositories
+         WHERE id = $1",
+    )
         .bind(repo_id)
         .fetch_optional(&client.pool)
         .await
@@ -529,7 +533,7 @@ async fn load_commit_summary(
             c.hash,
             c.parent_hash,
             c.message,
-            c.created_at,
+            c.created_at::text AS created_at,
             COALESCE(cm.additions, 0) AS additions,
             COALESCE(cm.deletions, 0) AS deletions,
             u.id AS author_id,
@@ -571,13 +575,8 @@ async fn load_branches_by_head(
 }
 
 fn ensure_local_repo(repo_id: &str) -> Result<(), String> {
-    let expected_repo = sync::repo_id_from_cwd()?;
-    if repo_id.trim() != expected_repo {
-        return Err(format!(
-            "[ERROR] Unknown repo '{}', expected '{}'",
-            repo_id.trim(),
-            expected_repo
-        ));
+    if repo_id.trim().is_empty() {
+        return Err("[ERROR] Missing repo_id".to_string());
     }
     Ok(())
 }
