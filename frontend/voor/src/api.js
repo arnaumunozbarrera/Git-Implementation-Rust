@@ -36,6 +36,21 @@ export async function fetchRepositories(getToken) {
   return fetchWithClerkAuth("/repos", getToken);
 }
 
+export async function fetchSystemHealth() {
+  const response = await fetch(`${apiBaseUrl}/health`, {
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Health request failed with ${response.status}`);
+  }
+
+  return response.json();
+}
+
 export async function fetchAnalyticsOverview(repoId, getToken) {
   if (getToken) {
     return fetchWithClerkAuth(`/repos/${encodeURIComponent(repoId)}/analytics/overview`, getToken);

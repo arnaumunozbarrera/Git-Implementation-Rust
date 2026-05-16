@@ -1,6 +1,7 @@
 import { SignIn, SignedIn, SignedOut, useAuth, useClerk, useUser } from "@clerk/clerk-react";
 import { useEffect, useState } from "react";
 import { deleteAccountRecords, deleteRepository, fetchAnalyticsOverview, fetchRepositories } from "./api.js";
+import { SystemHealthCard } from "./components/SystemHealthCard.jsx";
 
 const navItems = [
   { id: "overview", icon: "dashboard" },
@@ -55,6 +56,22 @@ const translations = {
           objects: "objects",
           loading: "Loading...",
           noData: "No data available",
+        },
+        health: {
+          eyebrow: "System Health",
+          title: "Service Health",
+          loading: "Checking...",
+          noData: "No health data available",
+          uptime: "Uptime",
+          services: "Services",
+          latestEvent: "Latest event",
+          statuses: {
+            degraded: "Degraded",
+            down: "Down",
+            healthy: "Healthy",
+            unknown: "Unknown",
+            warning: "Warning",
+          },
         },
       },
       activity: {
@@ -152,6 +169,22 @@ const translations = {
           objects: "objetos",
           loading: "Cargando...",
           noData: "No hay datos disponibles",
+        },
+        health: {
+          eyebrow: "Salud del sistema",
+          title: "Estado del servicio",
+          loading: "Comprobando...",
+          noData: "No hay datos de salud disponibles",
+          uptime: "Tiempo activo",
+          services: "Servicios",
+          latestEvent: "Ultimo evento",
+          statuses: {
+            degraded: "Degradado",
+            down: "Caido",
+            healthy: "Correcto",
+            unknown: "Desconocido",
+            warning: "Aviso",
+          },
         },
       },
       activity: {
@@ -717,6 +750,8 @@ function OverviewPage({ getToken, page, repoId }) {
           meta={isReady ? `${compactNumber(data.object_count)} ${stats.objects}` : ""}
         />
       </div>
+
+      <SystemHealthCard copy={page.health} />
     </section>
   );
 }
