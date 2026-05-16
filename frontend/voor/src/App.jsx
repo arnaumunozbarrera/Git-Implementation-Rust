@@ -1,6 +1,6 @@
 import { SignIn, SignedIn, SignedOut, useAuth, useClerk, useUser } from "@clerk/clerk-react";
 import { useEffect, useState } from "react";
-import { deleteAccountRecords, deleteRepository, fetchAnalyticsOverview } from "./api.js";
+import { deleteAccountRecords, deleteRepository, fetchAnalyticsOverview, fetchRepositories } from "./api.js";
 
 const navItems = [
   { id: "overview", icon: "dashboard" },
@@ -26,6 +26,13 @@ const translations = {
       description: "Authenticate with Clerk to access repository telemetry and protected backend routes.",
       missingTitle: "Clerk is not configured",
       missingDescription: "Set VITE_CLERK_PUBLISHABLE_KEY in the frontend environment to enable login.",
+    },
+    service: {
+      eyebrow: "Service Status",
+      title: "Service is down",
+      description: "Repository data is unavailable because the backend service cannot be reached.",
+      retry: "Retry",
+      signedInAs: "Signed in as",
     },
     nav: {
       overview: "Overview",
@@ -117,6 +124,13 @@ const translations = {
       missingTitle: "Clerk no esta configurado",
       missingDescription: "Define VITE_CLERK_PUBLISHABLE_KEY en el entorno del frontend para activar el inicio de sesion.",
     },
+    service: {
+      eyebrow: "Estado del servicio",
+      title: "El servicio no esta disponible",
+      description: "Los datos del repositorio no estan disponibles porque no se puede acceder al backend.",
+      retry: "Reintentar",
+      signedInAs: "Sesion iniciada como",
+    },
     nav: {
       overview: "Resumen",
       activity: "Actividad",
@@ -193,9 +207,6 @@ const translations = {
 };
 
 const settingsDefaults = {
-  activeRepoId: "main-repo-v2",
-  defaultBranch: "main",
-  repoVisibility: "public",
   language: "en",
   theme: "dark",
   displayName: "",
@@ -246,6 +257,22 @@ function initialsFromUsername(username) {
     .toUpperCase();
 }
 
+function displayNameFromUser(user, settings) {
+  return settings.displayName || user?.fullName || user?.username || user?.primaryEmailAddress?.emailAddress || "";
+}
+
+function emailFromUser(user, settings) {
+  return settings.email || user?.primaryEmailAddress?.emailAddress || "";
+}
+
+function visibilityFromRepository(repo) {
+  if (!repo) {
+    return "";
+  }
+
+  return repo.is_private ? "private" : "public";
+}
+
 export function App() {
   const [settings, setSettings] = useState(readSettings);
   const copy = translations[settings.language] ?? translations.en;
@@ -269,6 +296,11 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   const [activePage, setActivePage] = useState("overview");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
+  const [repositoryState, setRepositoryState] = useState({
+    status: "loading",
+    repositories: [],
+    error: null,
+  });
 
   useEffect(() => {
     if (!user) {
@@ -282,6 +314,25 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
       username: current.username || user.username || "",
     }));
   }, [setSettings, user]);
+
+  const loadRepositories = () => {
+    setRepositoryState({ status: "loading", repositories: [], error: null });
+    fetchRepositories(getToken)
+      .then((repositories) => {
+        setRepositoryState({
+          status: "ready",
+          repositories: Array.isArray(repositories) ? repositories : [],
+          error: null,
+        });
+      })
+      .catch((error) => {
+        setRepositoryState({ status: "unavailable", repositories: [], error: error.message });
+      });
+  };
+
+  useEffect(() => {
+    loadRepositories();
+  }, [getToken]);
 
   const updateSetting = (key, value) => {
     setSaveStatus("");
@@ -319,12 +370,19 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   };
 
   const handleDeleteRepository = async () => {
+    const activeRepository = repositoryState.repositories[0];
+    if (!activeRepository) {
+      setSaveStatus(copy.service.description);
+      return;
+    }
+
     if (!window.confirm(copy.settings.confirmRemoveRepository)) {
       return;
     }
 
     try {
-      await deleteRepository(settings.activeRepoId, getToken);
+      await deleteRepository(activeRepository.id, getToken);
+      loadRepositories();
       setSaveStatus(copy.settings.repositoryDeleted);
     } catch {
       setSaveStatus(copy.settings.destructiveError);
@@ -347,7 +405,14 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   };
 
   const appClassName = `app-shell theme-${settings.theme}`;
-  const profileInitials = initialsFromUsername(settings.username || user?.username || user?.primaryEmailAddress?.emailAddress);
+  const accountName = displayNameFromUser(user, settings);
+  const accountEmail = emailFromUser(user, settings);
+  const profileInitials = initialsFromUsername(settings.username || accountName || accountEmail);
+  const activeRepository = repositoryState.repositories[0] ?? null;
+  const repoName = activeRepository?.name || activeRepository?.id || (repositoryState.status === "loading" ? "Loading..." : "No data available");
+  const repoVisibility = activeRepository ? visibilityFromRepository(activeRepository) : "No data";
+  const repoBranch = activeRepository?.default_branch || (repositoryState.status === "loading" ? "Loading..." : "No data available");
+  const backendUnavailable = repositoryState.status === "unavailable";
 
   return (
     <div className={appClassName}>
@@ -388,12 +453,12 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
       <header className="top-bar">
         <div className="repo-context">
           <div>
-            <span className="repo-name">{settings.activeRepoId}</span>
-            <span className="visibility-pill">{settings.repoVisibility}</span>
+            <span className="repo-name">{repoName}</span>
+            <span className="visibility-pill">{repoVisibility}</span>
           </div>
           <span className="sync-meta">
             <span className="material-symbols-outlined">history</span>
-            {settings.defaultBranch}
+            {repoBranch}
           </span>
         </div>
         <div className="top-actions">
@@ -410,8 +475,8 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
             {accountMenuOpen ? (
               <div className="account-popover">
                 <div className="account-summary">
-                  <strong>{settings.displayName || user?.fullName || user?.username}</strong>
-                  <span>{settings.email || user?.primaryEmailAddress?.emailAddress}</span>
+                  <strong>{accountName || copy.service.signedInAs}</strong>
+                  <span>{accountEmail || user?.id}</span>
                 </div>
                 <button type="button" onClick={handleChangeAccount}>{copy.account.changeAccount}</button>
                 <button type="button" onClick={handleLogout}>{copy.account.logout}</button>
@@ -422,7 +487,14 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
       </header>
 
       <main className="main-canvas">
-        {activePage === "settings" ? (
+        {backendUnavailable ? (
+          <ServiceDownPage
+            accountEmail={accountEmail}
+            accountName={accountName}
+            copy={copy.service}
+            onRetry={loadRepositories}
+          />
+        ) : activePage === "settings" ? (
           <SettingsPage
             copy={copy}
             onDeleteAccount={handleDeleteAccount}
@@ -433,7 +505,7 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
             settings={settings}
           />
         ) : activePage === "overview" ? (
-          <OverviewPage getToken={getToken} page={copy.pages.overview} repoId={settings.activeRepoId} />
+          <OverviewPage getToken={getToken} page={copy.pages.overview} repoId={activeRepository?.id} />
         ) : (
           <EmptySection page={copy.pages[activePage]} />
         )}
@@ -477,6 +549,25 @@ export function MissingClerkConfig() {
         <p>{copy.auth.missingDescription}</p>
       </section>
     </main>
+  );
+}
+
+function ServiceDownPage({ accountEmail, accountName, copy, onRetry }) {
+  return (
+    <section className="service-down-page" aria-live="polite">
+      <span className="material-symbols-outlined service-down-icon" aria-hidden="true">cloud_off</span>
+      <p className="label-caps">{copy.eyebrow}</p>
+      <h1>{copy.title}</h1>
+      <p>{copy.description}</p>
+      {accountName || accountEmail ? (
+        <div className="service-account">
+          <span>{copy.signedInAs}</span>
+          <strong>{accountName || accountEmail}</strong>
+          {accountName && accountEmail ? <small>{accountEmail}</small> : null}
+        </div>
+      ) : null}
+      <button className="secondary-button" type="button" onClick={onRetry}>{copy.retry}</button>
+    </section>
   );
 }
 
@@ -566,6 +657,13 @@ function OverviewPage({ getToken, page, repoId }) {
 
   useEffect(() => {
     let active = true;
+
+    if (!repoId) {
+      setState({ status: "unavailable", data: null });
+      return () => {
+        active = false;
+      };
+    }
 
     setState({ status: "loading", data: null });
     fetchAnalyticsOverview(repoId, getToken)

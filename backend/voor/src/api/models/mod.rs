@@ -13,7 +13,7 @@ pub mod tree_entries;
 pub mod frontend;
 
 pub use users::User;
-pub use repositories::{InitRepoRequest, InitRepoResponse, Repository};
+pub use repositories::{DeleteActionResponse, InitRepoRequest, InitRepoResponse, Repository};
 pub use commits_metadata::CommitMetadata;
 pub use branches::Branch;
 pub use stars::Star;
@@ -26,5 +26,6 @@ pub use frontend::{
     ActivityFeedItem, ActivityFeedQuery, AnalyticsOverviewResponse, CommitGraphNode,
     CommitGraphQuery, CommitGraphResponse, CommitHistoryQuery, CommitSummary, ContentEntry,
     ContentsResponse, DashboardActivitySummary, FileContentResponse, PaginationResponse,
-    ReadmePreview, RepoDashboardResponse, RepoPathQuery, RepositoryFileSummary, UserSummary,
+    ReadmePreview, RepoDashboardResponse, RepoPathQuery, RepositoryFileSummary,
+    RepositoryStorageSummary, UserSummary,
 };

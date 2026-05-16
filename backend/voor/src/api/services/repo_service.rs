@@ -1,5 +1,5 @@
 use crate::api::clients::supabase::SupabaseClient;
-use crate::api::models::{InitRepoRequest, InitRepoResponse, Repository};
+use crate::api::models::{DeleteActionResponse, InitRepoRequest, InitRepoResponse, Repository};
 
 pub async fn get_all_repos(
     client: &SupabaseClient,
@@ -108,5 +108,72 @@ pub async fn init_repo(
             "Created repository '{}' with default branch '{}'",
             repo_id, default_branch
         )),
+    })
+}
+
+pub async fn delete_repo(
+    client: &SupabaseClient,
+    user_id: &str,
+    repo_id: &str,
+) -> Result<DeleteActionResponse, String> {
+    let user_id = user_id.trim();
+    let repo_id = repo_id.trim();
+
+    if repo_id.is_empty() {
+        return Err("[ERROR] Missing repo_id".to_string());
+    }
+
+    let owner_id: Option<String> = sqlx::query_scalar("SELECT owner_id FROM repositories WHERE id = $1")
+        .bind(repo_id)
+        .fetch_optional(&client.pool)
+        .await
+        .map_err(|error| format!("[ERROR] Failed to load repository '{}': {}", repo_id, error))?;
+
+    let Some(owner_id) = owner_id else {
+        return Err(format!("[ERROR] Repository '{}' not found", repo_id));
+    };
+
+    if owner_id != user_id {
+        return Err(format!("[ERROR] User '{}' cannot delete repository '{}'", user_id, repo_id));
+    }
+
+    sqlx::query("DELETE FROM stars WHERE repo_id = $1")
+        .bind(repo_id)
+        .execute(&client.pool)
+        .await
+        .map_err(|error| format!("[ERROR] Failed to delete stars for '{}': {}", repo_id, error))?;
+
+    sqlx::query("DELETE FROM repo_access_logs WHERE repo_id = $1")
+        .bind(repo_id)
+        .execute(&client.pool)
+        .await
+        .map_err(|error| format!("[ERROR] Failed to delete access logs for '{}': {}", repo_id, error))?;
+
+    sqlx::query("DELETE FROM commits_metadata WHERE repo_id = $1")
+        .bind(repo_id)
+        .execute(&client.pool)
+        .await
+        .map_err(|error| format!("[ERROR] Failed to delete commit metadata for '{}': {}", repo_id, error))?;
+
+    sqlx::query("DELETE FROM branches WHERE repo_id = $1")
+        .bind(repo_id)
+        .execute(&client.pool)
+        .await
+        .map_err(|error| format!("[ERROR] Failed to delete branches for '{}': {}", repo_id, error))?;
+
+    let result = sqlx::query("DELETE FROM repositories WHERE id = $1 AND owner_id = $2")
+        .bind(repo_id)
+        .bind(user_id)
+        .execute(&client.pool)
+        .await
+        .map_err(|error| format!("[ERROR] Failed to delete repository '{}': {}", repo_id, error))?;
+
+    if result.rows_affected() == 0 {
+        return Err(format!("[ERROR] Repository '{}' not found", repo_id));
+    }
+
+    Ok(DeleteActionResponse {
+        message: format!("Deleted repository '{}'", repo_id),
+        database_action: Some(format!("Removed repository '{}' and related records", repo_id)),
     })
 }

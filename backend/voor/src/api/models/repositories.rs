@@ -38,3 +38,9 @@ pub struct InitRepoResponse {
     pub repo_id: String,
     pub database_action: Option<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeleteActionResponse {
+    pub message: String,
+    pub database_action: Option<String>,
+}

@@ -1,7 +1,7 @@
 use axum::{
     extract::Request,
     middleware,
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use dotenvy::dotenv;
@@ -16,9 +16,9 @@ use crate::api::routes::frontend_routes::{
     get_repo_contents, get_repo_dashboard, get_repo_file,
 };
 use crate::api::routes::health_routes::get_health;
-use crate::api::routes::repo_routes::{get_repos, init_repo};
+use crate::api::routes::repo_routes::{delete_repo, get_repos, init_repo};
 use crate::api::routes::sync_routes::{pull_branch, push_branch, sync_db};
-use crate::api::routes::user_routes::get_users;
+use crate::api::routes::user_routes::{delete_account, get_users};
 use crate::utils::service_monitor::{LogLevel, ServiceMonitor};
 
 #[derive(Clone)]
@@ -100,7 +100,9 @@ pub async fn api() {
     let protected = Router::new()
         .route("/repos", get(get_repos))
         .route("/repos/init", post(init_repo))
+        .route("/repos/:repo_id", delete(delete_repo))
         .route("/users", get(get_users))
+        .route("/account", delete(delete_account))
         .route("/push", post(push_branch))
         .route("/pull", post(pull_branch))
         .route("/sync-db", post(sync_db))

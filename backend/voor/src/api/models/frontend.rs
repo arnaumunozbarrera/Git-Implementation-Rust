@@ -70,6 +70,12 @@ pub struct RepositoryFileSummary {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct RepositoryStorageSummary {
+    pub bytes: usize,
+    pub objects: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ReadmePreview {
     pub path: String,
     pub blob_hash: String,
@@ -158,4 +164,6 @@ pub struct AnalyticsOverviewResponse {
     pub last_push_at: Option<String>,
     pub last_pull_at: Option<String>,
     pub contributors_count: i64,
+    pub repository_size_bytes: usize,
+    pub object_count: usize,
 }

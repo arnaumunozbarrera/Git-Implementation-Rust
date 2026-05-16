@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use base64::Engine;
@@ -9,7 +9,8 @@ use crate::api::clients::supabase::SupabaseClient;
 use crate::api::models::{
     ActivityFeedItem, AnalyticsOverviewResponse, CommitGraphNode, CommitGraphResponse,
     CommitSummary, ContentEntry, ContentsResponse, FileContentResponse, PaginationResponse,
-    ReadmePreview, RepoDashboardResponse, Repository, RepositoryFileSummary, UserSummary,
+    ReadmePreview, RepoDashboardResponse, Repository, RepositoryFileSummary,
+    RepositoryStorageSummary, UserSummary,
 };
 use crate::utils::object_store::{self, ObjectType};
 use crate::utils::sync;
@@ -430,6 +431,8 @@ pub async fn get_analytics_overview(
     .await
     .map_err(|error| format!("[ERROR] Failed to load analytics for '{}': {}", repo_id, error))?;
 
+    let storage_summary = summarize_repository_storage(client, repo_id).await?;
+
     Ok(AnalyticsOverviewResponse {
         repo_id: repo_id.to_string(),
         branches_count: row.get::<i64, _>("branches_count"),
@@ -440,6 +443,8 @@ pub async fn get_analytics_overview(
         last_push_at: row.get::<Option<String>, _>("last_push_at"),
         last_pull_at: row.get::<Option<String>, _>("last_pull_at"),
         contributors_count: row.get::<i64, _>("contributors_count"),
+        repository_size_bytes: storage_summary.bytes,
+        object_count: storage_summary.objects,
     })
 }
 
@@ -591,6 +596,68 @@ fn summarize_commit_tree(commit_hash: &str) -> Result<RepositoryFileSummary, Str
     let mut directories = 0usize;
     count_tree_entries(&tree_hash, &mut files, &mut directories)?;
     Ok(RepositoryFileSummary { files, directories })
+}
+
+async fn summarize_repository_storage(
+    client: &SupabaseClient,
+    repo_id: &str,
+) -> Result<RepositoryStorageSummary, String> {
+    let heads = sqlx::query_scalar::<_, String>(
+        "SELECT DISTINCT last_commit_hash FROM branches WHERE repo_id = $1 AND last_commit_hash IS NOT NULL",
+    )
+    .bind(repo_id)
+    .fetch_all(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to load branch heads for '{}': {}", repo_id, error))?;
+
+    let mut seen = HashSet::new();
+    let mut summary = RepositoryStorageSummary {
+        bytes: 0,
+        objects: 0,
+    };
+
+    for head in heads {
+        add_reachable_object_size(&head, &mut seen, &mut summary)?;
+    }
+
+    Ok(summary)
+}
+
+fn add_reachable_object_size(
+    hash: &str,
+    seen: &mut HashSet<String>,
+    summary: &mut RepositoryStorageSummary,
+) -> Result<(), String> {
+    let trimmed = hash.trim();
+    if trimmed.is_empty() || !seen.insert(trimmed.to_string()) {
+        return Ok(());
+    }
+
+    let parsed = object_store::read_object(trimmed)?;
+    summary.bytes += parsed.full_bytes.len();
+    summary.objects += 1;
+
+    match parsed.object_type {
+        ObjectType::Blob => {}
+        ObjectType::Tree => {
+            for entry in object_store::parse_tree(&parsed.content)? {
+                add_reachable_object_size(&entry.hash, seen, summary)?;
+            }
+        }
+        ObjectType::Commit => {
+            let commit_text = String::from_utf8(parsed.content)
+                .map_err(|error| format!("[ERROR] Invalid commit content: {}", error))?;
+            for line in commit_text.lines() {
+                if let Some(tree_hash) = line.strip_prefix("tree ") {
+                    add_reachable_object_size(tree_hash, seen, summary)?;
+                } else if let Some(parent_hash) = line.strip_prefix("parent ") {
+                    add_reachable_object_size(parent_hash, seen, summary)?;
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn count_tree_entries(tree_hash: &str, files: &mut usize, directories: &mut usize) -> Result<(), String> {
