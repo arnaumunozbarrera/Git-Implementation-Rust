@@ -32,6 +32,10 @@ export async function deleteAccountRecords(getToken) {
   });
 }
 
+export async function fetchRepositories(getToken) {
+  return fetchWithClerkAuth("/repos", getToken);
+}
+
 export async function fetchAnalyticsOverview(repoId, getToken) {
   if (getToken) {
     return fetchWithClerkAuth(`/repos/${encodeURIComponent(repoId)}/analytics/overview`, getToken);

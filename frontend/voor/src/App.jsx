@@ -1,6 +1,6 @@
 import { SignIn, SignedIn, SignedOut, useAuth, useClerk, useUser } from "@clerk/clerk-react";
 import { useEffect, useState } from "react";
-import { deleteAccountRecords, deleteRepository } from "./api.js";
+import { deleteAccountRecords, deleteRepository, fetchAnalyticsOverview } from "./api.js";
 
 const navItems = [
   { id: "overview", icon: "dashboard" },
@@ -39,6 +39,16 @@ const translations = {
         eyebrow: "Repository Control Plane",
         title: "Overview",
         description: "This workspace is reserved for repository summary modules.",
+        stats: {
+          totalCommits: "Total Commits",
+          contributors: "contributors",
+          lastActivity: "Last Activity",
+          lastActivityContext: "latest repository event",
+          repositorySize: "Repository Size",
+          objects: "objects",
+          loading: "Loading...",
+          noData: "No data available",
+        },
       },
       activity: {
         eyebrow: "Repository Events",
@@ -119,6 +129,16 @@ const translations = {
         eyebrow: "Panel de control del repositorio",
         title: "Resumen",
         description: "Este espacio esta reservado para los modulos de resumen del repositorio.",
+        stats: {
+          totalCommits: "Commits totales",
+          contributors: "colaboradores",
+          lastActivity: "Ultima actividad",
+          lastActivityContext: "ultimo evento del repositorio",
+          repositorySize: "Tamano del repositorio",
+          objects: "objetos",
+          loading: "Cargando...",
+          noData: "No hay datos disponibles",
+        },
       },
       activity: {
         eyebrow: "Eventos del repositorio",
@@ -412,6 +432,8 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
             saveStatus={saveStatus}
             settings={settings}
           />
+        ) : activePage === "overview" ? (
+          <OverviewPage getToken={getToken} page={copy.pages.overview} repoId={settings.activeRepoId} />
         ) : (
           <EmptySection page={copy.pages[activePage]} />
         )}
@@ -455,6 +477,162 @@ export function MissingClerkConfig() {
         <p>{copy.auth.missingDescription}</p>
       </section>
     </main>
+  );
+}
+
+function compactNumber(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "";
+  }
+
+  return new Intl.NumberFormat("en", { notation: "compact" }).format(number);
+}
+
+function formatBytes(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "";
+  }
+
+  if (number === 0) {
+    return "0 B";
+  }
+
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(Math.floor(Math.log(number) / Math.log(1024)), units.length - 1);
+  const amount = number / 1024 ** index;
+  return `${amount >= 10 || index === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[index]}`;
+}
+
+function formatRelativeTime(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const seconds = Math.round((date.getTime() - Date.now()) / 1000);
+  const divisions = [
+    { amount: 60, unit: "second" },
+    { amount: 60, unit: "minute" },
+    { amount: 24, unit: "hour" },
+    { amount: 7, unit: "day" },
+    { amount: 4.345, unit: "week" },
+    { amount: 12, unit: "month" },
+    { amount: Number.POSITIVE_INFINITY, unit: "year" },
+  ];
+
+  let duration = seconds;
+  for (const division of divisions) {
+    if (Math.abs(duration) < division.amount) {
+      return new Intl.RelativeTimeFormat("en", { numeric: "auto" }).format(Math.round(duration), division.unit);
+    }
+    duration /= division.amount;
+  }
+
+  return "";
+}
+
+function getLatestActivity(data) {
+  const dates = [data?.last_push_at, data?.last_pull_at]
+    .filter(Boolean)
+    .map((value) => new Date(value))
+    .filter((date) => !Number.isNaN(date.getTime()))
+    .sort((left, right) => right.getTime() - left.getTime());
+
+  return dates[0]?.toISOString() ?? null;
+}
+
+function hasOverviewData(data) {
+  return Boolean(
+    data &&
+      Number.isFinite(Number(data.commits_count)) &&
+      Number.isFinite(Number(data.contributors_count)) &&
+      Number.isFinite(Number(data.repository_size_bytes)) &&
+      Number.isFinite(Number(data.object_count)),
+  );
+}
+
+function OverviewPage({ getToken, page, repoId }) {
+  const stats = page.stats;
+  const [state, setState] = useState({
+    status: "loading",
+    data: null,
+  });
+
+  useEffect(() => {
+    let active = true;
+
+    setState({ status: "loading", data: null });
+    fetchAnalyticsOverview(repoId, getToken)
+      .then((data) => {
+        if (active) {
+          setState({ status: "ready", data });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setState({ status: "unavailable", data: null });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [getToken, repoId]);
+
+  const data = state.data;
+  const isReady = state.status === "ready" && hasOverviewData(data);
+  const unavailableText = state.status === "loading" ? stats.loading : stats.noData;
+  const latestActivity = isReady ? formatRelativeTime(getLatestActivity(data)) : "";
+
+  return (
+    <section className="workspace-section">
+      <div className="landing-heading">
+        <p className="label-caps">{page.eyebrow}</p>
+        <h1>{page.title}</h1>
+        <p>{page.description}</p>
+      </div>
+
+      <div className="overview-stat-grid" aria-label="Repository summary">
+        <OverviewStatCard
+          icon="insights"
+          label={stats.totalCommits}
+          value={isReady ? compactNumber(data.commits_count) : unavailableText}
+          meta={isReady ? `${compactNumber(data.contributors_count)} ${stats.contributors}` : ""}
+          tone={isReady ? "positive" : undefined}
+        />
+        <OverviewStatCard
+          icon="schedule"
+          label={stats.lastActivity}
+          value={isReady && latestActivity ? latestActivity : unavailableText}
+          meta={isReady && latestActivity ? stats.lastActivityContext : ""}
+        />
+        <OverviewStatCard
+          icon="database"
+          label={stats.repositorySize}
+          value={isReady ? formatBytes(data.repository_size_bytes) : unavailableText}
+          meta={isReady ? `${compactNumber(data.object_count)} ${stats.objects}` : ""}
+        />
+      </div>
+    </section>
+  );
+}
+
+function OverviewStatCard({ icon, label, meta, tone, value }) {
+  return (
+    <article className="overview-stat-card">
+      <header className="overview-stat-header">
+        <span>{label}</span>
+        <span className="material-symbols-outlined" aria-hidden="true">{icon}</span>
+      </header>
+      <strong>{value}</strong>
+      <p className={tone === "positive" ? "stat-meta stat-meta-positive" : "stat-meta"}>{meta}</p>
+    </article>
   );
 }
 
