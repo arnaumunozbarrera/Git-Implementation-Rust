@@ -67,6 +67,8 @@ const translations = {
       readmePath: "README path",
       cloneAction: "Cloning it",
       cloneError: "Repository created, but Desktop clone failed",
+      clonedTitle: "Repository cloned",
+      clonedMessage: "The remote repository was cloned automatically at the Desktop.",
       isPrivate: "Private repository",
       cancel: "Cancel",
       submit: "Create",
@@ -236,6 +238,8 @@ const translations = {
       readmePath: "Ruta README",
       cloneAction: "Clonandolo",
       cloneError: "Repositorio creado, pero fallo la clonacion al escritorio",
+      clonedTitle: "Repositorio clonado",
+      clonedMessage: "El repositorio remoto se clono automaticamente en el escritorio.",
       isPrivate: "Repositorio privado",
       cancel: "Cancelar",
       submit: "Crear",
@@ -574,6 +578,7 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   const [saveStatus, setSaveStatus] = useState("");
   const [deleteConfirmRepo, setDeleteConfirmRepo] = useState(null);
   const [deleteNotice, setDeleteNotice] = useState(null);
+  const [cloneNotice, setCloneNotice] = useState(null);
   const [repositoryState, setRepositoryState] = useState({
     status: "loading",
     repositories: [],
@@ -654,6 +659,18 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
 
     return () => window.clearTimeout(timeout);
   }, [deleteNotice]);
+
+  useEffect(() => {
+    if (!cloneNotice) {
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setCloneNotice(null);
+    }, 5200);
+
+    return () => window.clearTimeout(timeout);
+  }, [cloneNotice]);
 
   useEffect(() => {
     let active = true;
@@ -828,7 +845,12 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
         getToken,
       );
       try {
-        await cloneRepositoryToDesktop(repoId, { default_branch: createRepoForm.defaultBranch.trim() || "main" }, getToken);
+        const cloneResponse = await cloneRepositoryToDesktop(repoId, { default_branch: createRepoForm.defaultBranch.trim() || "main" }, getToken);
+        setCloneNotice({
+          path: cloneResponse?.path || "",
+          title: copy.repository.clonedTitle,
+          message: copy.repository.clonedMessage,
+        });
       } catch {
         setSaveStatus(copy.repository.cloneError);
       }
@@ -1024,6 +1046,9 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
       {deleteNotice ? (
         <DeleteResultNotice notice={deleteNotice} />
       ) : null}
+      {cloneNotice ? (
+        <CloneResultNotice notice={cloneNotice} onClose={() => setCloneNotice(null)} />
+      ) : null}
     </div>
   );
 }
@@ -1199,6 +1224,24 @@ function DeleteResultNotice({ notice }) {
         <strong>{notice.title}</strong>
         {notice.message ? <p>{notice.message}</p> : null}
       </div>
+    </aside>
+  );
+}
+
+function CloneResultNotice({ notice, onClose }) {
+  return (
+    <aside className="clone-result-modal" role="status">
+      <header>
+        <span className="material-symbols-outlined" aria-hidden="true">check_circle</span>
+        <div>
+          <strong>{notice.title}</strong>
+          <p>{notice.message}</p>
+        </div>
+        <button className="icon-button" type="button" aria-label="Close" onClick={onClose}>
+          <span className="material-symbols-outlined" aria-hidden="true">close</span>
+        </button>
+      </header>
+      {notice.path ? <code>{notice.path}</code> : null}
     </aside>
   );
 }
@@ -1565,7 +1608,7 @@ function BranchesPage({ branch, branches, branchName, getToken, onSelectBranch, 
 
   const isLoading = status === "loading" || state.status === "loading";
   const graphNodes = Array.isArray(state.graph?.nodes) ? state.graph.nodes : [];
-  const hasData = branch && state.status === "ready";
+  const hasData = state.status === "ready";
 
   return (
     <section className="workspace-section">

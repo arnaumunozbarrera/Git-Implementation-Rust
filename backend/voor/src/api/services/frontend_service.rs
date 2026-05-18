@@ -192,6 +192,42 @@ pub async fn get_commit_history(
         .map(map_commit_summary_row)
         .collect::<Result<Vec<_>, _>>()?;
 
+    if items.is_empty() {
+        let fallback_rows = sqlx::query(
+            "SELECT
+                cm.commit_hash AS hash,
+                NULL::text AS parent_hash,
+                cm.message,
+                cm.created_at::text AS created_at,
+                COALESCE(cm.additions, 0) AS additions,
+                COALESCE(cm.deletions, 0) AS deletions,
+                u.id AS author_id,
+                u.username,
+                u.email
+             FROM commits_metadata cm
+             LEFT JOIN users u ON u.id = cm.author_id
+             WHERE cm.repo_id = $1
+             ORDER BY cm.created_at DESC, cm.commit_hash DESC
+             LIMIT $2 OFFSET $3",
+        )
+        .bind(repo_id)
+        .bind((limit + 1) as i64)
+        .bind(offset as i64)
+        .fetch_all(&client.pool)
+        .await
+        .map_err(|error| {
+            format!(
+                "[ERROR] Failed to load commit metadata history for '{}': {}",
+                repo_id, error
+            )
+        })?;
+
+        items = fallback_rows
+            .into_iter()
+            .map(map_commit_summary_row)
+            .collect::<Result<Vec<_>, _>>()?;
+    }
+
     let next_offset = if items.len() > limit {
         items.pop();
         Some(offset + limit)

@@ -834,6 +834,70 @@ button {
   line-height: 18px;
 }
 
+.clone-result-modal {
+  position: fixed;
+  right: 28px;
+  bottom: 104px;
+  z-index: 92;
+  width: min(420px, calc(100vw - 32px));
+  border: 1px solid rgba(126, 231, 135, 0.45);
+  border-left: 4px solid #7ee787;
+  border-radius: 4px;
+  background: var(--surface);
+  box-shadow: 0 18px 60px rgb(0 0 0 / 42%);
+  padding: 14px 16px;
+}
+
+.clone-result-modal header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.clone-result-modal header > .material-symbols-outlined,
+.clone-result-modal strong {
+  color: #7ee787;
+}
+
+.clone-result-modal header > .material-symbols-outlined {
+  flex: 0 0 auto;
+  font-size: 20px;
+}
+
+.clone-result-modal .icon-button {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.clone-result-modal strong {
+  display: block;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.clone-result-modal p {
+  margin: 2px 0 0;
+  color: var(--outline);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.clone-result-modal code {
+  display: block;
+  margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--canvas);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  line-height: 16px;
+  padding: 8px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .activity-main {
   display: grid;
   gap: 6px;
@@ -1897,6 +1961,11 @@ button {
   }
 
   .delete-result-notice {
+    right: 16px;
+    bottom: 90px;
+  }
+
+  .clone-result-modal {
     right: 16px;
     bottom: 90px;
   }
