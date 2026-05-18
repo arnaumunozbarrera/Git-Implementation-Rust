@@ -3,11 +3,14 @@ import { useEffect, useState } from "react";
 import {
   deleteAccountRecords,
   deleteRepository,
+  fetchActivityFeed,
   fetchAnalyticsOverview,
   fetchBranches,
   fetchCommitGraph,
   fetchCommitHistory,
   fetchRepositories,
+  initRepository,
+  updateAccountProfile,
 } from "./api.js";
 import { SystemHealthCard } from "./components/SystemHealthCard.jsx";
 
@@ -54,6 +57,20 @@ const translations = {
       noBranches: "No branches",
       private: "private",
       public: "public",
+      create: "Create repository",
+      createTitle: "Create remote repository",
+      createDescription: "Configure the remote repository before cloning it.",
+      name: "Name",
+      defaultBranch: "Default branch",
+      description: "Description",
+      readmePath: "README path",
+      cloneAction: "Cloning it",
+      isPrivate: "Private repository",
+      cancel: "Cancel",
+      submit: "Create",
+      creating: "Creating...",
+      created: "Repository created",
+      createError: "Unable to create repository",
     },
     nav: {
       overview: "Overview",
@@ -98,6 +115,20 @@ const translations = {
           loading: "Loading...",
           noData: "No data available",
         },
+        recent: {
+          title: "Recent Activity",
+          eyebrow: "Latest 10 activities",
+          contributor: "Contributor",
+          loading: "Loading activity...",
+          noData: "No recent activity available",
+        },
+        signals: {
+          title: "Branch Commit Distribution",
+          eyebrow: "Commit composition",
+          commits: "commits",
+          nextUpdate: "Next analysis/update: after the next remote sync.",
+          noData: "No branch commit data available",
+        },
       },
       activity: {
         eyebrow: "Repository Events",
@@ -140,8 +171,8 @@ const translations = {
       email: "Email",
       save: "Save Settings",
       saved: "Settings saved",
-      profileSaved: "Clerk profile updated",
-      profileError: "Unable to update Clerk profile",
+      profileSaved: "Profile saved",
+      profileError: "Unable to save profile",
       emailLocked: "Primary email is managed by Clerk account settings.",
       dangerEyebrow: "Danger Zone",
       dangerTitle: "Repository and Account Removal",
@@ -192,6 +223,20 @@ const translations = {
       noBranches: "Sin ramas",
       private: "privado",
       public: "publico",
+      create: "Crear repositorio",
+      createTitle: "Crear repositorio remoto",
+      createDescription: "Configura el repositorio remoto antes de clonarlo.",
+      name: "Nombre",
+      defaultBranch: "Rama principal",
+      description: "Descripcion",
+      readmePath: "Ruta README",
+      cloneAction: "Clonandolo",
+      isPrivate: "Repositorio privado",
+      cancel: "Cancelar",
+      submit: "Crear",
+      creating: "Creando...",
+      created: "Repositorio creado",
+      createError: "No se pudo crear el repositorio",
     },
     nav: {
       overview: "Resumen",
@@ -236,6 +281,20 @@ const translations = {
           loading: "Cargando...",
           noData: "No hay datos disponibles",
         },
+        recent: {
+          title: "Actividad reciente",
+          eyebrow: "Ultimas 10 actividades",
+          contributor: "Colaborador",
+          loading: "Cargando actividad...",
+          noData: "No hay actividad reciente disponible",
+        },
+        signals: {
+          title: "Distribucion de commits por rama",
+          eyebrow: "Composicion de commits",
+          commits: "commits",
+          nextUpdate: "Proximo analisis/actualizacion: despues de la siguiente sincronizacion remota.",
+          noData: "No hay datos de commits por rama disponibles",
+        },
       },
       activity: {
         eyebrow: "Eventos del repositorio",
@@ -278,8 +337,8 @@ const translations = {
       email: "Correo electronico",
       save: "Guardar ajustes",
       saved: "Ajustes guardados",
-      profileSaved: "Perfil de Clerk actualizado",
-      profileError: "No se pudo actualizar el perfil de Clerk",
+      profileSaved: "Perfil guardado",
+      profileError: "No se pudo guardar el perfil",
       emailLocked: "El correo principal se gestiona desde los ajustes de cuenta de Clerk.",
       dangerEyebrow: "Zona de riesgo",
       dangerTitle: "Eliminar repositorio y cuenta",
@@ -364,6 +423,14 @@ function visibilityFromRepository(repo) {
   }
 
   return repo.is_private ? "private" : "public";
+}
+
+function repositoryIdFromName(name) {
+  return String(name || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
 function NativeSelect({ children, className = "", ...props }) {
@@ -504,6 +571,16 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
     error: null,
   });
   const [selectedRepositoryId, setSelectedRepositoryId] = useState("");
+  const [createRepoOpen, setCreateRepoOpen] = useState(false);
+  const [createRepoStatus, setCreateRepoStatus] = useState("");
+  const [createRepoForm, setCreateRepoForm] = useState({
+    name: "",
+    defaultBranch: "main",
+    description: "",
+    readmePath: "README.md",
+    isPrivate: true,
+    cloneAfterCreate: true,
+  });
   const [branchState, setBranchState] = useState({
     status: "idle",
     branches: [],
@@ -613,13 +690,22 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
     localStorage.setItem("gitVoorSettings", JSON.stringify(settingsToSave));
 
     try {
+      await updateAccountProfile({
+        username: settings.username || null,
+        email: settings.email || user?.primaryEmailAddress?.emailAddress || null,
+      }, getToken);
+
       if (user) {
-        const [firstName, ...lastNameParts] = settings.displayName.trim().split(/\s+/);
-        await user.update({
-          firstName: firstName || undefined,
-          lastName: lastNameParts.join(" ") || undefined,
-          username: settings.username || undefined,
-        });
+        try {
+          const [firstName, ...lastNameParts] = settings.displayName.trim().split(/\s+/);
+          await user.update({
+            firstName: firstName || undefined,
+            lastName: lastNameParts.join(" ") || undefined,
+            username: settings.username || undefined,
+          });
+        } catch {
+          // The backend profile is the source for dashboard activity names.
+        }
       }
       setSaveStatus(copy.settings.profileSaved);
     } catch {
@@ -673,6 +759,56 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
     }
   };
 
+  const updateCreateRepoForm = (key, value) => {
+    setCreateRepoStatus("");
+    setCreateRepoForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const handleCreateRepository = async (event) => {
+    event.preventDefault();
+    setCreateRepoStatus("loading");
+
+    try {
+      const name = createRepoForm.name.trim();
+      const repoId = repositoryIdFromName(name);
+      if (!repoId) {
+        throw new Error("Repository name must include letters or numbers");
+      }
+      await initRepository(
+        {
+          repo_id: repoId,
+          name,
+          owner_id: user?.id ?? "",
+          default_branch: createRepoForm.defaultBranch.trim() || "main",
+          is_private: createRepoForm.isPrivate,
+          description: createRepoForm.description.trim() || null,
+          readme_path: createRepoForm.readmePath.trim() || null,
+          tags: null,
+          theme: null,
+          head: null,
+          objects: null,
+        },
+        getToken,
+      );
+
+      setCreateRepoStatus("created");
+      setCreateRepoOpen(false);
+      setCreateRepoForm({
+        name: "",
+        defaultBranch: "main",
+        description: "",
+        readmePath: "README.md",
+        isPrivate: true,
+        cloneAfterCreate: true,
+      });
+      loadRepositories();
+      setSelectedRepositoryId(repoId);
+      setSaveStatus(copy.repository.created);
+    } catch {
+      setCreateRepoStatus("error");
+    }
+  };
+
   const appClassName = `app-shell theme-${settings.theme}`;
   const accountName = displayNameFromUser(user, settings);
   const accountEmail = emailFromUser(user, settings);
@@ -681,7 +817,6 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   const activeBranch = branchState.branches.find((branch) => branch.name === selectedBranchName) ?? null;
   const repositoryCopy = copy.repository;
   const repoVisibility = activeRepository ? repositoryCopy[visibilityFromRepository(activeRepository)] : repositoryCopy.noData;
-  const branchPlaceholder = branchState.status === "loading" ? repositoryCopy.loading : repositoryCopy.noBranches;
   const backendUnavailable = repositoryState.status === "unavailable";
 
   return (
@@ -744,27 +879,6 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
                   repositoryState.repositories.map((repository) => (
                     <NativeSelectOption key={repository.id} value={repository.id}>
                       {repository.name || repository.id}
-                    </NativeSelectOption>
-                  ))
-                )}
-              </NativeSelect>
-            </span>
-          </label>
-          <label className="context-select-label">
-            <span className="context-select-title">{repositoryCopy.branch}</span>
-            <span className="context-select-control">
-              <NativeSelect
-                aria-label={repositoryCopy.branch}
-                disabled={!activeRepository || branchState.status !== "ready" || branchState.branches.length === 0}
-                value={activeBranch?.name ?? ""}
-                onChange={(event) => setSelectedBranchName(event.target.value)}
-              >
-                {branchState.branches.length === 0 ? (
-                  <NativeSelectOption value="">{branchPlaceholder}</NativeSelectOption>
-                ) : (
-                  branchState.branches.map((branch) => (
-                    <NativeSelectOption key={branch.id} value={branch.name}>
-                      {branch.name}
                     </NativeSelectOption>
                   ))
                 )}
@@ -834,6 +948,30 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
           <EmptySection page={copy.pages[activePage]} />
         )}
       </main>
+
+      <button
+        className="create-repo-fab"
+        type="button"
+        aria-label={repositoryCopy.create}
+        title={repositoryCopy.create}
+        onClick={() => {
+          setCreateRepoStatus("");
+          setCreateRepoOpen(true);
+        }}
+      >
+        <span className="material-symbols-outlined" aria-hidden="true">add</span>
+      </button>
+
+      {createRepoOpen ? (
+        <CreateRepositoryModal
+          copy={repositoryCopy}
+          form={createRepoForm}
+          onClose={() => setCreateRepoOpen(false)}
+          onSubmit={handleCreateRepository}
+          onUpdate={updateCreateRepoForm}
+          status={createRepoStatus}
+        />
+      ) : null}
     </div>
   );
 }
@@ -914,6 +1052,69 @@ function ServiceDownPage({ accountEmail, accountName, copy, onRetry }) {
   );
 }
 
+function CreateRepositoryModal({ copy, form, onClose, onSubmit, onUpdate, status }) {
+  const isCreating = status === "loading";
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="modal-panel create-repo-modal" role="dialog" aria-modal="true" aria-labelledby="create-repo-title">
+        <header className="modal-header">
+          <div>
+            <p className="label-caps">{copy.cloneAction}</p>
+            <h2 id="create-repo-title">{copy.createTitle}</h2>
+          </div>
+          <button className="icon-button" type="button" aria-label={copy.cancel} onClick={onClose}>
+            <span className="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        </header>
+
+        <form className="modal-form" onSubmit={onSubmit}>
+          <p className="modal-description">{copy.createDescription}</p>
+          <div className="form-grid">
+            <label className="field-label">
+              {copy.name}
+              <input required value={form.name} onChange={(event) => onUpdate("name", event.target.value)} />
+            </label>
+            <label className="field-label">
+              {copy.defaultBranch}
+              <input required value={form.defaultBranch} onChange={(event) => onUpdate("defaultBranch", event.target.value)} />
+            </label>
+            <label className="field-label">
+              {copy.readmePath}
+              <input value={form.readmePath} onChange={(event) => onUpdate("readmePath", event.target.value)} />
+            </label>
+          </div>
+
+          <label className="field-label">
+            {copy.description}
+            <input value={form.description} onChange={(event) => onUpdate("description", event.target.value)} />
+          </label>
+
+          <div className="modal-toggle-row">
+            <label>
+              <input checked={form.isPrivate} type="checkbox" onChange={(event) => onUpdate("isPrivate", event.target.checked)} />
+              <span>{copy.isPrivate}</span>
+            </label>
+            <label>
+              <input checked={form.cloneAfterCreate} type="checkbox" onChange={(event) => onUpdate("cloneAfterCreate", event.target.checked)} />
+              <span>{copy.cloneAction}</span>
+            </label>
+          </div>
+
+          {status === "error" ? <p className="modal-status modal-status-error">{copy.createError}</p> : null}
+
+          <footer className="modal-actions">
+            <button className="secondary-button" type="button" onClick={onClose}>{copy.cancel}</button>
+            <button className="primary-button" type="submit" disabled={isCreating}>
+              {isCreating ? copy.creating : copy.submit}
+            </button>
+          </footer>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 function compactNumber(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) {
@@ -981,6 +1182,27 @@ function getLatestActivity(data) {
   return dates[0]?.toISOString() ?? null;
 }
 
+function activityAccentFor(value) {
+  const palette = ["#58a6ff", "#7ee787", "#ffba42", "#d2a8ff", "#ff7b72", "#39c5cf", "#ffa657"];
+  const seed = String(value || "unknown");
+  let hash = 0;
+
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash + seed.charCodeAt(index) * (index + 1)) % palette.length;
+  }
+
+  return palette[hash];
+}
+
+function displayNameFromActor(actor) {
+  return actor?.username || actor?.email || "";
+}
+
+function languageAccentFor(index) {
+  const palette = ["#58a6ff", "#7ee787", "#ffba42", "#d2a8ff", "#ff7b72", "#39c5cf", "#ffa657", "#a5d6ff"];
+  return palette[index % palette.length];
+}
+
 function formatDateTime(value) {
   if (!value) {
     return "";
@@ -1015,18 +1237,24 @@ function OverviewPage({ getToken, page, repoId }) {
     status: "loading",
     data: null,
   });
+  const [activityState, setActivityState] = useState({
+    status: "loading",
+    items: [],
+  });
 
   useEffect(() => {
     let active = true;
 
     if (!repoId) {
       setState({ status: "unavailable", data: null });
+      setActivityState({ status: "unavailable", items: [] });
       return () => {
         active = false;
       };
     }
 
     setState({ status: "loading", data: null });
+    setActivityState({ status: "loading", items: [] });
     fetchAnalyticsOverview(repoId, getToken)
       .then((data) => {
         if (active) {
@@ -1036,6 +1264,21 @@ function OverviewPage({ getToken, page, repoId }) {
       .catch(() => {
         if (active) {
           setState({ status: "unavailable", data: null });
+        }
+      });
+
+    fetchActivityFeed(repoId, getToken, 10, "commit")
+      .then((data) => {
+        if (active) {
+          setActivityState({
+            status: "ready",
+            items: Array.isArray(data?.items) ? data.items.slice(0, 10) : [],
+          });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setActivityState({ status: "unavailable", items: [] });
         }
       });
 
@@ -1078,6 +1321,11 @@ function OverviewPage({ getToken, page, repoId }) {
           meta={isReady ? `${compactNumber(data.object_count)} ${stats.objects}` : ""}
         />
       </div>
+
+      <div className="overview-detail-grid">
+        <RecentActivityPanel copy={page.recent} items={activityState.items} status={activityState.status} />
+        <RepositorySignalsPanel copy={page.signals} data={data} isReady={isReady} />
+      </div>
     </section>
   );
 }
@@ -1092,6 +1340,96 @@ function OverviewStatCard({ icon, label, meta, tone, value }) {
       <strong>{value}</strong>
       <p className={tone === "positive" ? "stat-meta stat-meta-positive" : "stat-meta"}>{meta}</p>
     </article>
+  );
+}
+
+function RecentActivityPanel({ copy, items, status }) {
+  const isLoading = status === "loading";
+  const commitItems = items.filter((item) => item.action === "commit");
+
+  return (
+    <section className="overview-panel recent-activity-panel">
+      <header className="overview-panel-header">
+        <div>
+          <h2>{copy.title}</h2>
+        </div>
+        <span className="material-symbols-outlined" aria-hidden="true">history</span>
+      </header>
+
+      {commitItems.length > 0 ? (
+        <div className="recent-activity-list">
+          {commitItems.map((item, index) => {
+            const contributor = displayNameFromActor(item.actor);
+            const accent = activityAccentFor(contributor);
+
+            return (
+              <article className="recent-activity-row" key={`${item.created_at}-${index}`} style={{ "--activity-accent": accent }}>
+                <div className="activity-user-rail">
+                  {contributor ? <span>{contributor}</span> : null}
+                </div>
+                <div className="activity-main">
+                  <div className="activity-main-header">
+                    <strong>{item.message}</strong>
+                    <time dateTime={item.created_at}>{formatRelativeTime(item.created_at)}</time>
+                  </div>
+                  {contributor ? (
+                    <div className="activity-meta-line">
+                      <span>{copy.contributor}: {contributor}</span>
+                    </div>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="overview-panel-empty">{isLoading ? copy.loading : copy.noData}</p>
+      )}
+    </section>
+  );
+}
+
+function RepositorySignalsPanel({ copy, data, isReady }) {
+  const branches = isReady && Array.isArray(data?.branch_commit_distribution)
+    ? data.branch_commit_distribution
+    : [];
+
+  return (
+    <section className="overview-panel repository-signals-panel">
+      <header className="overview-panel-header">
+        <div>
+          <h2>{copy.title}</h2>
+        </div>
+        <span className="material-symbols-outlined" aria-hidden="true">data_usage</span>
+      </header>
+
+      <p className="distribution-update-message">{copy.nextUpdate}</p>
+
+      {branches.length > 0 ? (
+        <div className="language-distribution-list">
+          {branches.map((item, index) => (
+            <div
+              className="language-distribution-row"
+              key={item.branch}
+              style={{ "--language-accent": languageAccentFor(index) }}
+            >
+              <strong className="language-percentage">{Number(item.percentage).toFixed(1)}%</strong>
+              <div className="language-distribution-body">
+                <div className="language-distribution-heading">
+                  <span>{item.branch}</span>
+                  <small>{compactNumber(item.total_count)} {copy.commits}</small>
+                </div>
+                <div className="language-progress-track" aria-hidden="true">
+                  <span style={{ width: `${Math.max(0, Math.min(100, Number(item.percentage) || 0))}%` }} />
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="overview-panel-empty">{copy.noData}</p>
+      )}
+    </section>
   );
 }
 

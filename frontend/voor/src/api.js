@@ -36,8 +36,22 @@ export async function deleteAccountRecords(getToken) {
   });
 }
 
+export async function updateAccountProfile(profile, getToken) {
+  return fetchWithClerkAuth("/account/profile", getToken, {
+    method: "POST",
+    body: JSON.stringify(profile),
+  });
+}
+
 export async function fetchRepositories(getToken) {
   return fetchWithClerkAuth("/repos", getToken);
+}
+
+export async function initRepository(repository, getToken) {
+  return fetchWithClerkAuth("/repos/init", getToken, {
+    method: "POST",
+    body: JSON.stringify(repository),
+  });
 }
 
 export async function fetchBranches(repoId, getToken) {
@@ -76,6 +90,18 @@ export async function fetchAnalyticsOverview(repoId, getToken) {
   }
 
   return response.json();
+}
+
+export async function fetchActivityFeed(repoId, getToken, limit = 10, action) {
+  const params = new URLSearchParams({ limit: String(limit), offset: "0" });
+  if (action) {
+    params.set("action", action);
+  }
+
+  return fetchWithClerkAuth(
+    `/repos/${encodeURIComponent(repoId)}/activity?${params.toString()}`,
+    getToken,
+  );
 }
 
 export async function fetchCommitGraph(repoId, refName, getToken, limit = 20) {

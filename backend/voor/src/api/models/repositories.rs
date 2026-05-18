@@ -1,6 +1,6 @@
+use crate::utils::sync::EncodedObject;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use crate::utils::sync::EncodedObject;
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct Repository {

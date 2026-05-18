@@ -8,8 +8,8 @@ use sqlx::Row;
 use crate::api::clients::supabase::SupabaseClient;
 use crate::api::models::{
     ActivityFeedItem, AnalyticsOverviewResponse, CommitGraphNode, CommitGraphResponse,
-    CommitSummary, ContentEntry, ContentsResponse, FileContentResponse, PaginationResponse,
-    ReadmePreview, RepoDashboardResponse, Repository, RepositoryFileSummary,
+    BranchCommitDistributionItem, CommitSummary, ContentEntry, ContentsResponse, FileContentResponse,
+    PaginationResponse, ReadmePreview, RepoDashboardResponse, Repository, RepositoryFileSummary,
     RepositoryStorageSummary, UserSummary,
 };
 use crate::utils::object_store::{self, ObjectType};
@@ -24,18 +24,27 @@ pub async fn get_repo_dashboard(
 ) -> Result<RepoDashboardResponse, String> {
     ensure_local_repo(repo_id)?;
     let repo = load_repository(client, repo_id).await?;
-    let branch_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM branches WHERE repo_id = $1")
-            .bind(repo_id)
-            .fetch_one(&client.pool)
-            .await
-            .map_err(|error| format!("[ERROR] Failed to count branches for '{}': {}", repo_id, error))?;
+    let branch_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM branches WHERE repo_id = $1")
+        .bind(repo_id)
+        .fetch_one(&client.pool)
+        .await
+        .map_err(|error| {
+            format!(
+                "[ERROR] Failed to count branches for '{}': {}",
+                repo_id, error
+            )
+        })?;
     let commit_count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM commits_metadata WHERE repo_id = $1")
             .bind(repo_id)
             .fetch_one(&client.pool)
             .await
-            .map_err(|error| format!("[ERROR] Failed to count commits for '{}': {}", repo_id, error))?;
+            .map_err(|error| {
+                format!(
+                    "[ERROR] Failed to count commits for '{}': {}",
+                    repo_id, error
+                )
+            })?;
 
     let latest_commit = match resolve_ref_head(client, repo_id, None).await? {
         Some((_, head)) => load_commit_summary(client, repo_id, &head).await?,
@@ -53,7 +62,12 @@ pub async fn get_repo_dashboard(
     .bind(repo_id)
     .fetch_one(&client.pool)
     .await
-    .map_err(|error| format!("[ERROR] Failed to load activity summary for '{}': {}", repo_id, error))?;
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to load activity summary for '{}': {}",
+            repo_id, error
+        )
+    })?;
 
     let push_count = activity_row.get::<i64, _>("push_count");
     let pull_count = activity_row.get::<i64, _>("pull_count");
@@ -62,7 +76,12 @@ pub async fn get_repo_dashboard(
             .bind(repo_id)
             .fetch_one(&client.pool)
             .await
-            .map_err(|error| format!("[ERROR] Failed to count commit events for '{}': {}", repo_id, error))?;
+            .map_err(|error| {
+                format!(
+                    "[ERROR] Failed to count commit events for '{}': {}",
+                    repo_id, error
+                )
+            })?;
 
     let starred_by_me: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM stars WHERE repo_id = $1 AND user_id = $2)",
@@ -71,7 +90,12 @@ pub async fn get_repo_dashboard(
     .bind(user_id)
     .fetch_one(&client.pool)
     .await
-    .map_err(|error| format!("[ERROR] Failed to load star state for '{}': {}", repo_id, error))?;
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to load star state for '{}': {}",
+            repo_id, error
+        )
+    })?;
 
     let file_summary = match resolve_ref_head(client, repo_id, None).await? {
         Some((_, head)) => summarize_commit_tree(&head)?,
@@ -156,7 +180,12 @@ pub async fn get_commit_history(
     .bind(offset as i64)
     .fetch_all(&client.pool)
     .await
-    .map_err(|error| format!("[ERROR] Failed to load commit history for '{}': {}", repo_id, error))?;
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to load commit history for '{}': {}",
+            repo_id, error
+        )
+    })?;
 
     let mut items: Vec<CommitSummary> = rows
         .into_iter()
@@ -219,7 +248,12 @@ pub async fn get_commit_graph(
     .bind(limit as i64)
     .fetch_all(&client.pool)
     .await
-    .map_err(|error| format!("[ERROR] Failed to load commit graph for '{}': {}", repo_id, error))?;
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to load commit graph for '{}': {}",
+            repo_id, error
+        )
+    })?;
 
     let mut nodes = Vec::with_capacity(rows.len());
     for row in rows {
@@ -291,7 +325,10 @@ pub async fn get_repo_file(
     ensure_local_repo(repo_id)?;
     let normalized_path = normalize_repo_path(path);
     let Some((resolved_ref, head)) = resolve_ref_head(client, repo_id, ref_name).await? else {
-        return Err(format!("[ERROR] Repository '{}' has no commits yet", repo_id));
+        return Err(format!(
+            "[ERROR] Repository '{}' has no commits yet",
+            repo_id
+        ));
     };
 
     let (blob_hash, content) = read_blob_at_path(&head, &normalized_path)?;
@@ -431,6 +468,7 @@ pub async fn get_analytics_overview(
     .map_err(|error| format!("[ERROR] Failed to load analytics for '{}': {}", repo_id, error))?;
 
     let storage_summary = summarize_repository_storage(client, repo_id).await?;
+    let branch_commit_distribution = summarize_branch_commit_distribution(client, repo_id).await?;
 
     Ok(AnalyticsOverviewResponse {
         repo_id: repo_id.to_string(),
@@ -444,6 +482,7 @@ pub async fn get_analytics_overview(
         contributors_count: row.get::<i64, _>("contributors_count"),
         repository_size_bytes: storage_summary.bytes,
         object_count: storage_summary.objects,
+        branch_commit_distribution,
     })
 }
 
@@ -453,7 +492,10 @@ pub fn normalize_limit(value: Option<usize>) -> usize {
 
 fn normalize_repo_path(path: &str) -> String {
     let trimmed = path.trim().replace('\\', "/");
-    trimmed.trim_start_matches('/').trim_start_matches("./").to_string()
+    trimmed
+        .trim_start_matches('/')
+        .trim_start_matches("./")
+        .to_string()
 }
 
 fn map_commit_summary_row(row: sqlx::postgres::PgRow) -> Result<CommitSummary, String> {
@@ -481,11 +523,11 @@ async fn load_repository(client: &SupabaseClient, repo_id: &str) -> Result<Repos
          FROM repositories
          WHERE id = $1",
     )
-        .bind(repo_id)
-        .fetch_optional(&client.pool)
-        .await
-        .map_err(|error| format!("[ERROR] Failed to load repository '{}': {}", repo_id, error))?
-        .ok_or_else(|| format!("[ERROR] Repository '{}' not found", repo_id))
+    .bind(repo_id)
+    .fetch_optional(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to load repository '{}': {}", repo_id, error))?
+    .ok_or_else(|| format!("[ERROR] Repository '{}' not found", repo_id))
 }
 
 async fn resolve_ref_head(
@@ -548,7 +590,12 @@ async fn load_commit_summary(
     .bind(commit_hash)
     .fetch_optional(&client.pool)
     .await
-    .map_err(|error| format!("[ERROR] Failed to load commit '{}' for '{}': {}", commit_hash, repo_id, error))?;
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to load commit '{}' for '{}': {}",
+            commit_hash, repo_id, error
+        )
+    })?;
 
     row.map(map_commit_summary_row).transpose()
 }
@@ -561,7 +608,12 @@ async fn load_branches_by_head(
         .bind(repo_id)
         .fetch_all(&client.pool)
         .await
-        .map_err(|error| format!("[ERROR] Failed to load branches for '{}': {}", repo_id, error))?;
+        .map_err(|error| {
+            format!(
+                "[ERROR] Failed to load branches for '{}': {}",
+                repo_id, error
+            )
+        })?;
 
     let mut map = HashMap::new();
     for row in rows {
@@ -622,6 +674,53 @@ async fn summarize_repository_storage(
     Ok(summary)
 }
 
+async fn summarize_branch_commit_distribution(
+    client: &SupabaseClient,
+    repo_id: &str,
+) -> Result<Vec<BranchCommitDistributionItem>, String> {
+    let rows = sqlx::query(
+        "WITH RECURSIVE branch_chain AS (
+            SELECT b.name AS branch, c.hash, c.parent_hash
+            FROM branches b
+            JOIN commits c ON c.hash = b.last_commit_hash
+            WHERE b.repo_id = $1 AND b.last_commit_hash IS NOT NULL
+            UNION ALL
+            SELECT chain.branch, parent.hash, parent.parent_hash
+            FROM commits parent
+            JOIN branch_chain chain ON parent.hash = chain.parent_hash
+         )
+         SELECT branch, COUNT(DISTINCT hash)::bigint AS total_count
+         FROM branch_chain
+         GROUP BY branch
+         ORDER BY total_count DESC, branch ASC",
+    )
+    .bind(repo_id)
+    .fetch_all(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to summarize branch commits for '{}': {}", repo_id, error))?;
+
+    let total_commits: i64 = rows
+        .iter()
+        .map(|row| row.get::<i64, _>("total_count"))
+        .sum();
+
+    if total_commits == 0 {
+        return Ok(Vec::new());
+    }
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let total_count = row.get::<i64, _>("total_count");
+            BranchCommitDistributionItem {
+                branch: row.get::<String, _>("branch"),
+                total_count,
+                percentage: ((total_count as f64 / total_commits as f64) * 1000.0).round() / 10.0,
+            }
+        })
+        .collect())
+}
+
 fn add_reachable_object_size(
     hash: &str,
     seen: &mut HashSet<String>,
@@ -659,7 +758,11 @@ fn add_reachable_object_size(
     Ok(())
 }
 
-fn count_tree_entries(tree_hash: &str, files: &mut usize, directories: &mut usize) -> Result<(), String> {
+fn count_tree_entries(
+    tree_hash: &str,
+    files: &mut usize,
+    directories: &mut usize,
+) -> Result<(), String> {
     let tree = object_store::read_object(tree_hash)?;
     for entry in object_store::parse_tree(&tree.content)? {
         match entry.object_type {

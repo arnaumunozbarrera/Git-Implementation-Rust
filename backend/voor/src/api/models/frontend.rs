@@ -166,4 +166,12 @@ pub struct AnalyticsOverviewResponse {
     pub contributors_count: i64,
     pub repository_size_bytes: usize,
     pub object_count: usize,
+    pub branch_commit_distribution: Vec<BranchCommitDistributionItem>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BranchCommitDistributionItem {
+    pub branch: String,
+    pub total_count: i64,
+    pub percentage: f64,
 }
