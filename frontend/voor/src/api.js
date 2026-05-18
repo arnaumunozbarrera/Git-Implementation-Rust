@@ -40,6 +40,10 @@ export async function fetchRepositories(getToken) {
   return fetchWithClerkAuth("/repos", getToken);
 }
 
+export async function fetchBranches(repoId, getToken) {
+  return fetchWithClerkAuth(`/repos/${encodeURIComponent(repoId)}/branches`, getToken);
+}
+
 export async function fetchSystemHealth() {
   const response = await fetch(`${apiBaseUrl}/health`, {
     headers: {
@@ -72,4 +76,28 @@ export async function fetchAnalyticsOverview(repoId, getToken) {
   }
 
   return response.json();
+}
+
+export async function fetchCommitGraph(repoId, refName, getToken, limit = 20) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (refName) {
+    params.set("ref", refName);
+  }
+
+  return fetchWithClerkAuth(
+    `/repos/${encodeURIComponent(repoId)}/commits/graph?${params.toString()}`,
+    getToken,
+  );
+}
+
+export async function fetchCommitHistory(repoId, refName, getToken, limit = 6) {
+  const params = new URLSearchParams({ limit: String(limit), offset: "0" });
+  if (refName) {
+    params.set("ref", refName);
+  }
+
+  return fetchWithClerkAuth(
+    `/repos/${encodeURIComponent(repoId)}/commits?${params.toString()}`,
+    getToken,
+  );
 }

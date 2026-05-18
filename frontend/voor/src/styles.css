@@ -330,7 +330,6 @@ button {
 }
 
 .repo-context,
-.repo-context > div,
 .sync-meta,
 .top-actions,
 .top-links {
@@ -340,16 +339,70 @@ button {
 
 .repo-context {
   gap: 16px;
+  min-width: 0;
 }
 
-.repo-context > div {
+.context-select-label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
   gap: 8px;
+  color: var(--outline);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 16px;
+  text-transform: uppercase;
 }
 
-.repo-name {
-  font-size: 18px;
+.context-select-title {
+  flex: 0 0 auto;
+}
+
+.context-select-control {
+  min-width: 180px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+  padding: 0;
+}
+
+.native-select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--canvas);
+  color: var(--text);
+  font: inherit;
+  font-weight: 400;
+  line-height: 20px;
+  outline: none;
+  padding: 8px 32px 8px 10px;
+}
+
+.context-select-control .native-select {
+  max-width: 240px;
+  border: 0;
+  background: transparent;
+  font-size: 13px;
   font-weight: 600;
-  line-height: 24px;
+  line-height: 18px;
+  padding: 5px 28px 5px 8px;
+}
+
+.native-select:disabled {
+  color: var(--outline);
+  cursor: not-allowed;
+}
+
+.native-select:focus {
+  border-color: var(--primary-strong);
+  box-shadow: 0 0 0 1px var(--primary-strong);
+}
+
+.context-select-control .native-select:focus {
+  box-shadow: inset 0 0 0 1px var(--primary-strong);
 }
 
 .visibility-pill {
@@ -363,6 +416,18 @@ button {
   line-height: 16px;
   padding: 2px 8px;
   text-transform: uppercase;
+}
+
+.visibility-public {
+  border-color: rgb(35 134 54 / 55%);
+  background: rgb(35 134 54 / 14%);
+  color: #7ee787;
+}
+
+.visibility-private {
+  border-color: rgb(255 186 66 / 45%);
+  background: rgb(218 150 0 / 14%);
+  color: var(--warning);
 }
 
 .sync-meta {
@@ -591,6 +656,192 @@ button {
   font-size: 22px;
   font-weight: 600;
   line-height: 28px;
+}
+
+.branch-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.9fr) minmax(0, 1.35fr);
+  gap: 12px;
+}
+
+.branch-summary-panel,
+.branch-panel {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.branch-summary-panel {
+  align-self: start;
+}
+
+.branch-panel-header {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-container);
+  padding: 12px 16px;
+}
+
+.branch-panel-header h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.branch-panel-header .label-caps {
+  margin-bottom: 2px;
+}
+
+.branch-facts {
+  display: grid;
+}
+
+.branch-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+}
+
+.branch-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--canvas);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  padding: 6px 10px;
+}
+
+.branch-chip:hover,
+.branch-chip.active {
+  border-color: var(--primary-strong);
+  background: var(--surface-container);
+  color: var(--primary-strong);
+}
+
+.branch-chip .material-symbols-outlined {
+  font-size: 16px;
+}
+
+.branch-facts div {
+  display: grid;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  padding: 16px;
+}
+
+.branch-facts div:last-child {
+  border-bottom: 0;
+}
+
+.branch-facts span,
+.branch-empty,
+.commit-row span,
+.graph-node span {
+  color: var(--outline);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.branch-facts strong,
+.commit-row code {
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 18px;
+  overflow-wrap: anywhere;
+}
+
+.commit-list,
+.graph-list {
+  display: grid;
+}
+
+.commit-row,
+.graph-node {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding: 12px 16px;
+}
+
+.commit-row:last-child,
+.graph-node:last-child {
+  border-bottom: 0;
+}
+
+.commit-row div,
+.graph-node div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.commit-row strong,
+.graph-node strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commit-row code {
+  flex: 0 0 auto;
+  color: var(--primary-strong);
+}
+
+.branch-graph-panel {
+  grid-column: 1 / -1;
+}
+
+.graph-node {
+  justify-content: flex-start;
+}
+
+.graph-dot {
+  position: relative;
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--primary-strong);
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.graph-node:not(:last-child) .graph-dot::after {
+  position: absolute;
+  top: 8px;
+  left: 2px;
+  width: 2px;
+  height: 36px;
+  background: var(--outline-variant);
+  content: "";
+}
+
+.branch-empty {
+  margin: 0;
+  padding: 16px;
 }
 
 .stat-meta {
@@ -932,7 +1183,7 @@ button {
 }
 
 .field-label input,
-.field-label select,
+.field-label .native-select,
 .field-label textarea {
   width: 100%;
   border: 1px solid var(--border);
@@ -964,7 +1215,7 @@ button {
 }
 
 .field-label input:focus,
-.field-label select:focus,
+.field-label .native-select:focus,
 .field-label textarea:focus {
   border-color: var(--primary-strong);
   box-shadow: 0 0 0 1px var(--primary-strong);
@@ -1231,6 +1482,20 @@ button {
     display: none;
   }
 
+  .repo-context {
+    flex: 1;
+    gap: 8px;
+    overflow-x: auto;
+  }
+
+  .context-select-label {
+    min-width: 0;
+  }
+
+  .context-select-control {
+    min-width: 132px;
+  }
+
   .main-canvas {
     margin-left: 0;
     padding: 24px 16px;
@@ -1242,6 +1507,14 @@ button {
 
   .overview-stat-grid {
     grid-template-columns: 1fr;
+  }
+
+  .branch-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .branch-graph-panel {
+    grid-column: auto;
   }
 
   .service-health-row {
@@ -1286,8 +1559,19 @@ button {
     min-width: 0;
   }
 
-  .repo-name {
-    font-size: 14px;
+  .context-select-label {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 116px;
+  }
+
+  .context-select-control {
+    min-width: 116px;
+  }
+
+  .visibility-pill {
+    display: none;
   }
 
   .primary-button {

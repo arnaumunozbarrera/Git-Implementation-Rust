@@ -1,6 +1,14 @@
 import { SignIn, SignUp, SignedIn, SignedOut, useAuth, useClerk, useUser } from "@clerk/clerk-react";
 import { useEffect, useState } from "react";
-import { deleteAccountRecords, deleteRepository, fetchAnalyticsOverview, fetchRepositories } from "./api.js";
+import {
+  deleteAccountRecords,
+  deleteRepository,
+  fetchAnalyticsOverview,
+  fetchBranches,
+  fetchCommitGraph,
+  fetchCommitHistory,
+  fetchRepositories,
+} from "./api.js";
 import { SystemHealthCard } from "./components/SystemHealthCard.jsx";
 
 const navItems = [
@@ -37,6 +45,15 @@ const translations = {
       description: "Repository data is unavailable because the backend service cannot be reached.",
       retry: "Retry",
       signedInAs: "Signed in as",
+    },
+    repository: {
+      repository: "Repository",
+      branch: "Branch",
+      loading: "Loading...",
+      noData: "No data available",
+      noBranches: "No branches",
+      private: "private",
+      public: "public",
     },
     nav: {
       overview: "Overview",
@@ -90,7 +107,15 @@ const translations = {
       branches: {
         eyebrow: "Version Graph",
         title: "Branches",
-        description: "This workspace is reserved for branch graph and comparison modules.",
+        description: "Branch heads, recent commits, and the visible commit chain for the active repository.",
+        head: "Head",
+        created: "Created",
+        commits: "Recent commits",
+        graph: "Commit graph",
+        noHead: "No head commit",
+        noCommits: "No commits available",
+        loading: "Loading branch data...",
+        noData: "No branch data available",
       },
       sync: {
         eyebrow: "Remote Operations",
@@ -159,6 +184,15 @@ const translations = {
       retry: "Reintentar",
       signedInAs: "Sesion iniciada como",
     },
+    repository: {
+      repository: "Repositorio",
+      branch: "Rama",
+      loading: "Cargando...",
+      noData: "No hay datos disponibles",
+      noBranches: "Sin ramas",
+      private: "privado",
+      public: "publico",
+    },
     nav: {
       overview: "Resumen",
       activity: "Actividad",
@@ -211,7 +245,15 @@ const translations = {
       branches: {
         eyebrow: "Grafo de versiones",
         title: "Ramas",
-        description: "Este espacio esta reservado para el grafo de ramas y modulos de comparacion.",
+        description: "Cabeceras de rama, commits recientes y cadena visible para el repositorio activo.",
+        head: "Cabecera",
+        created: "Creada",
+        commits: "Commits recientes",
+        graph: "Grafo de commits",
+        noHead: "Sin commit de cabecera",
+        noCommits: "No hay commits disponibles",
+        loading: "Cargando datos de rama...",
+        noData: "No hay datos de rama disponibles",
       },
       sync: {
         eyebrow: "Operaciones remotas",
@@ -322,6 +364,18 @@ function visibilityFromRepository(repo) {
   }
 
   return repo.is_private ? "private" : "public";
+}
+
+function NativeSelect({ children, className = "", ...props }) {
+  return (
+    <select className={`native-select ${className}`.trim()} {...props}>
+      {children}
+    </select>
+  );
+}
+
+function NativeSelectOption({ children, ...props }) {
+  return <option {...props}>{children}</option>;
 }
 
 export function App() {
@@ -441,7 +495,7 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   const { openSignIn, signOut } = useClerk();
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
-  const [activePage, setActivePage] = useState("home");
+  const [activePage, setActivePage] = useState("overview");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const [repositoryState, setRepositoryState] = useState({
@@ -449,6 +503,13 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
     repositories: [],
     error: null,
   });
+  const [selectedRepositoryId, setSelectedRepositoryId] = useState("");
+  const [branchState, setBranchState] = useState({
+    status: "idle",
+    branches: [],
+    error: null,
+  });
+  const [selectedBranchName, setSelectedBranchName] = useState("");
 
   useEffect(() => {
     if (!user) {
@@ -471,14 +532,23 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
     setRepositoryState({ status: "loading", repositories: [], error: null });
     fetchRepositories(getToken)
       .then((repositories) => {
+        const normalizedRepositories = Array.isArray(repositories) ? repositories : [];
         setRepositoryState({
           status: "ready",
-          repositories: Array.isArray(repositories) ? repositories : [],
+          repositories: normalizedRepositories,
           error: null,
+        });
+        setSelectedRepositoryId((current) => {
+          if (current && normalizedRepositories.some((repository) => repository.id === current)) {
+            return current;
+          }
+
+          return normalizedRepositories[0]?.id ?? "";
         });
       })
       .catch((error) => {
         setRepositoryState({ status: "unavailable", repositories: [], error: error.message });
+        setSelectedRepositoryId("");
       });
   };
 
@@ -487,6 +557,51 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
       loadRepositories();
     }
   }, [getToken, isLoaded, isSignedIn]);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!selectedRepositoryId || !isLoaded || !isSignedIn) {
+      setBranchState({ status: "idle", branches: [], error: null });
+      setSelectedBranchName("");
+      return () => {
+        active = false;
+      };
+    }
+
+    setBranchState({ status: "loading", branches: [], error: null });
+    fetchBranches(selectedRepositoryId, getToken)
+      .then((branches) => {
+        if (!active) {
+          return;
+        }
+
+        const normalizedBranches = Array.isArray(branches) ? branches : [];
+        setBranchState({ status: "ready", branches: normalizedBranches, error: null });
+        setSelectedBranchName((current) => {
+          if (current && normalizedBranches.some((branch) => branch.name === current)) {
+            return current;
+          }
+
+          const selectedRepository = repositoryState.repositories.find((repository) => repository.id === selectedRepositoryId);
+          return (
+            normalizedBranches.find((branch) => branch.name === selectedRepository?.default_branch)?.name ??
+            normalizedBranches[0]?.name ??
+            ""
+          );
+        });
+      })
+      .catch((error) => {
+        if (active) {
+          setBranchState({ status: "unavailable", branches: [], error: error.message });
+          setSelectedBranchName("");
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [getToken, isLoaded, isSignedIn, repositoryState.repositories, selectedRepositoryId]);
 
   const updateSetting = (key, value) => {
     setSaveStatus("");
@@ -524,7 +639,7 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   };
 
   const handleDeleteRepository = async () => {
-    const activeRepository = repositoryState.repositories[0];
+    const activeRepository = repositoryState.repositories.find((repository) => repository.id === selectedRepositoryId) ?? repositoryState.repositories[0];
     if (!activeRepository) {
       setSaveStatus(copy.service.description);
       return;
@@ -562,10 +677,11 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   const accountName = displayNameFromUser(user, settings);
   const accountEmail = emailFromUser(user, settings);
   const profileInitials = initialsFromUsername(settings.username || accountName || accountEmail);
-  const activeRepository = repositoryState.repositories[0] ?? null;
-  const repoName = activeRepository?.name || activeRepository?.id || (repositoryState.status === "loading" ? "Loading..." : "No data available");
-  const repoVisibility = activeRepository ? visibilityFromRepository(activeRepository) : "No data";
-  const repoBranch = activeRepository?.default_branch || (repositoryState.status === "loading" ? "Loading..." : "No data available");
+  const activeRepository = repositoryState.repositories.find((repository) => repository.id === selectedRepositoryId) ?? repositoryState.repositories[0] ?? null;
+  const activeBranch = branchState.branches.find((branch) => branch.name === selectedBranchName) ?? null;
+  const repositoryCopy = copy.repository;
+  const repoVisibility = activeRepository ? repositoryCopy[visibilityFromRepository(activeRepository)] : repositoryCopy.noData;
+  const branchPlaceholder = branchState.status === "loading" ? repositoryCopy.loading : repositoryCopy.noBranches;
   const backendUnavailable = repositoryState.status === "unavailable";
 
   return (
@@ -610,14 +726,51 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
 
       <header className="top-bar">
         <div className="repo-context">
-          <div>
-            <span className="repo-name">{repoName}</span>
-            <span className="visibility-pill">{repoVisibility}</span>
-          </div>
-          <span className="sync-meta">
-            <span className="material-symbols-outlined">history</span>
-            {repoBranch}
+          <span className={`visibility-pill visibility-${visibilityFromRepository(activeRepository) || "unknown"}`}>
+            {repoVisibility}
           </span>
+          <label className="context-select-label">
+            <span className="context-select-title">{repositoryCopy.repository}</span>
+            <span className="context-select-control">
+              <NativeSelect
+                aria-label={repositoryCopy.repository}
+                disabled={repositoryState.status !== "ready" || repositoryState.repositories.length === 0}
+                value={activeRepository?.id ?? ""}
+                onChange={(event) => setSelectedRepositoryId(event.target.value)}
+              >
+                {repositoryState.repositories.length === 0 ? (
+                  <NativeSelectOption value="">{repositoryState.status === "loading" ? repositoryCopy.loading : repositoryCopy.noData}</NativeSelectOption>
+                ) : (
+                  repositoryState.repositories.map((repository) => (
+                    <NativeSelectOption key={repository.id} value={repository.id}>
+                      {repository.name || repository.id}
+                    </NativeSelectOption>
+                  ))
+                )}
+              </NativeSelect>
+            </span>
+          </label>
+          <label className="context-select-label">
+            <span className="context-select-title">{repositoryCopy.branch}</span>
+            <span className="context-select-control">
+              <NativeSelect
+                aria-label={repositoryCopy.branch}
+                disabled={!activeRepository || branchState.status !== "ready" || branchState.branches.length === 0}
+                value={activeBranch?.name ?? ""}
+                onChange={(event) => setSelectedBranchName(event.target.value)}
+              >
+                {branchState.branches.length === 0 ? (
+                  <NativeSelectOption value="">{branchPlaceholder}</NativeSelectOption>
+                ) : (
+                  branchState.branches.map((branch) => (
+                    <NativeSelectOption key={branch.id} value={branch.name}>
+                      {branch.name}
+                    </NativeSelectOption>
+                  ))
+                )}
+              </NativeSelect>
+            </span>
+          </label>
         </div>
         <div className="top-actions">
           <div className="account-menu">
@@ -666,6 +819,17 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
           />
         ) : activePage === "overview" ? (
           <OverviewPage getToken={getToken} page={copy.pages.overview} repoId={activeRepository?.id} />
+        ) : activePage === "branches" ? (
+          <BranchesPage
+            branch={activeBranch}
+            branches={branchState.branches}
+            branchName={selectedBranchName}
+            getToken={getToken}
+            onSelectBranch={setSelectedBranchName}
+            page={copy.pages.branches}
+            repoId={activeRepository?.id}
+            status={branchState.status}
+          />
         ) : (
           <EmptySection page={copy.pages[activePage]} />
         )}
@@ -817,6 +981,24 @@ function getLatestActivity(data) {
   return dates[0]?.toISOString() ?? null;
 }
 
+function formatDateTime(value) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function hasOverviewData(data) {
   return Boolean(
     data &&
@@ -913,6 +1095,145 @@ function OverviewStatCard({ icon, label, meta, tone, value }) {
   );
 }
 
+function BranchesPage({ branch, branches, branchName, getToken, onSelectBranch, page, repoId, status }) {
+  const [state, setState] = useState({
+    status: "idle",
+    graph: null,
+    history: [],
+  });
+
+  useEffect(() => {
+    let active = true;
+
+    if (!repoId || !branchName) {
+      setState({ status: "empty", graph: null, history: [] });
+      return () => {
+        active = false;
+      };
+    }
+
+    setState({ status: "loading", graph: null, history: [] });
+    Promise.all([
+      fetchCommitGraph(repoId, branchName, getToken, 24),
+      fetchCommitHistory(repoId, branchName, getToken, 6),
+    ])
+      .then(([graph, history]) => {
+        if (active) {
+          setState({
+            status: "ready",
+            graph,
+            history: Array.isArray(history?.items) ? history.items : [],
+          });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setState({ status: "unavailable", graph: null, history: [] });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [branchName, getToken, repoId]);
+
+  const isLoading = status === "loading" || state.status === "loading";
+  const graphNodes = Array.isArray(state.graph?.nodes) ? state.graph.nodes : [];
+  const hasData = branch && state.status === "ready";
+
+  return (
+    <section className="workspace-section">
+      <div className="landing-heading">
+        <p className="label-caps">{page.eyebrow}</p>
+        <h1>{page.title}</h1>
+        <p>{page.description}</p>
+      </div>
+
+      <div className="branch-layout">
+        <section className="branch-summary-panel">
+          <header className="branch-panel-header">
+            <div>
+              <p className="label-caps">{page.title}</p>
+              <h2>{branchName || page.noData}</h2>
+            </div>
+            <span className="visibility-pill">{compactNumber(branches.length)}</span>
+          </header>
+          {branches.length > 0 ? (
+            <div className="branch-chip-list" aria-label={page.title}>
+              {branches.map((item) => (
+                <button
+                  className={`branch-chip ${item.name === branchName ? "active" : ""}`}
+                  key={item.id}
+                  onClick={() => onSelectBranch(item.name)}
+                  type="button"
+                >
+                  <span className="material-symbols-outlined" aria-hidden="true">call_split</span>
+                  <span>{item.name}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <div className="branch-facts">
+            <div>
+              <span>{page.head}</span>
+              <strong>{branch?.last_commit_hash?.slice(0, 12) || (isLoading ? page.loading : page.noHead)}</strong>
+            </div>
+            <div>
+              <span>{page.created}</span>
+              <strong>{branch?.created_at ? formatDateTime(branch.created_at) : isLoading ? page.loading : page.noData}</strong>
+            </div>
+          </div>
+        </section>
+
+        <section className="branch-panel">
+          <header className="branch-panel-header">
+            <h2>{page.commits}</h2>
+          </header>
+          {hasData && state.history.length > 0 ? (
+            <div className="commit-list">
+              {state.history.map((commit) => (
+                <article className="commit-row" key={commit.hash}>
+                  <div>
+                    <strong>{commit.message}</strong>
+                    <span>{formatDateTime(commit.created_at)}</span>
+                  </div>
+                  <code>{commit.hash.slice(0, 10)}</code>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="branch-empty">{isLoading ? page.loading : page.noCommits}</p>
+          )}
+        </section>
+
+        <section className="branch-panel branch-graph-panel">
+          <header className="branch-panel-header">
+            <h2>{page.graph}</h2>
+          </header>
+          {hasData && graphNodes.length > 0 ? (
+            <div className="graph-list">
+              {graphNodes.map((node) => (
+                <article className="graph-node" key={node.hash}>
+                  <span className="graph-dot" aria-hidden="true" />
+                  <div>
+                    <strong>{node.message}</strong>
+                    <span>
+                      {node.hash.slice(0, 10)}
+                      {node.branches?.length ? ` · ${node.branches.join(", ")}` : ""}
+                    </span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <p className="branch-empty">{isLoading ? page.loading : page.noData}</p>
+          )}
+        </section>
+      </div>
+    </section>
+  );
+}
+
 function EmptySection({ page }) {
   return (
     <section className="workspace-section">
@@ -942,17 +1263,17 @@ function SettingsPage({ copy, onDeleteAccount, onDeleteRepository, onSave, onUpd
           <div className="form-grid">
             <label className="field-label">
               {copy.settings.language}
-              <select value={settings.language} onChange={(event) => onUpdate("language", event.target.value)}>
-                <option value="en">{copy.settings.english}</option>
-                <option value="es">{copy.settings.spanish}</option>
-              </select>
+              <NativeSelect value={settings.language} onChange={(event) => onUpdate("language", event.target.value)}>
+                <NativeSelectOption value="en">{copy.settings.english}</NativeSelectOption>
+                <NativeSelectOption value="es">{copy.settings.spanish}</NativeSelectOption>
+              </NativeSelect>
             </label>
             <label className="field-label">
               {copy.settings.appearance}
-              <select value={settings.theme} onChange={(event) => onUpdate("theme", event.target.value)}>
-                <option value="dark">{copy.appearance.dark}</option>
-                <option value="light">{copy.appearance.light}</option>
-              </select>
+              <NativeSelect value={settings.theme} onChange={(event) => onUpdate("theme", event.target.value)}>
+                <NativeSelectOption value="dark">{copy.appearance.dark}</NativeSelectOption>
+                <NativeSelectOption value="light">{copy.appearance.light}</NativeSelectOption>
+              </NativeSelect>
             </label>
           </div>
         </SettingsPanel>
