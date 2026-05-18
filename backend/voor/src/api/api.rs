@@ -18,7 +18,9 @@ use crate::api::routes::frontend_routes::{
     get_repo_contents, get_repo_dashboard, get_repo_file,
 };
 use crate::api::routes::health_routes::get_health;
-use crate::api::routes::repo_routes::{delete_repo, get_branches, get_repos, init_repo};
+use crate::api::routes::repo_routes::{
+    clone_repo_to_desktop, delete_repo, get_branches, get_repos, init_repo,
+};
 use crate::api::routes::sync_routes::{pull_branch, push_branch, sync_db};
 use crate::api::routes::user_routes::{delete_account, get_users, update_account_profile};
 use crate::utils::service_monitor::{LogLevel, ServiceMonitor};
@@ -108,6 +110,7 @@ pub async fn api() {
         .route("/repos", get(get_repos))
         .route("/repos/init", post(init_repo))
         .route("/repos/:repo_id", delete(delete_repo))
+        .route("/repos/:repo_id/clone-desktop", post(clone_repo_to_desktop))
         .route("/repos/:repo_id/branches", get(get_branches))
         .route("/users", get(get_users))
         .route("/account/profile", post(update_account_profile))

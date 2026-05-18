@@ -40,6 +40,17 @@ pub struct InitRepoResponse {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct CloneRepoRequest {
+    pub default_branch: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CloneRepoResponse {
+    pub message: String,
+    pub path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DeleteActionResponse {
     pub message: String,
     pub database_action: Option<String>,

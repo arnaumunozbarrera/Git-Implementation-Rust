@@ -502,7 +502,7 @@ button {
   height: 58px;
   place-items: center;
   border: 1px solid color-mix(in srgb, var(--primary-strong) 72%, white);
-  border-radius: 999px;
+  border-radius: 14px;
   background: var(--primary-strong);
   color: var(--primary-ink);
   cursor: pointer;
@@ -757,7 +757,7 @@ button {
 }
 
 .activity-user-rail span {
-  display: block;
+  display: none;
   width: 100%;
   border-left: 3px solid var(--activity-accent);
   color: var(--activity-accent);
@@ -772,6 +772,66 @@ button {
   text-overflow: ellipsis;
   text-transform: uppercase;
   writing-mode: vertical-rl;
+}
+
+.delete-repo-name {
+  display: block;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.delete-result-notice {
+  position: fixed;
+  right: 28px;
+  bottom: 104px;
+  z-index: 90;
+  display: flex;
+  width: min(360px, calc(100vw - 32px));
+  align-items: flex-start;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 4px;
+  background: var(--surface);
+  box-shadow: 0 18px 60px rgb(0 0 0 / 42%);
+  padding: 14px 16px;
+}
+
+.delete-result-success {
+  border-left-color: #7ee787;
+}
+
+.delete-result-error {
+  border-left-color: var(--error);
+}
+
+.delete-result-notice .material-symbols-outlined {
+  flex: 0 0 auto;
+  font-size: 20px;
+}
+
+.delete-result-success .material-symbols-outlined,
+.delete-result-success strong {
+  color: #7ee787;
+}
+
+.delete-result-error .material-symbols-outlined,
+.delete-result-error strong {
+  color: var(--error);
+}
+
+.delete-result-notice strong {
+  display: block;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.delete-result-notice p {
+  margin: 2px 0 0;
+  color: var(--outline);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .activity-main {
@@ -1834,6 +1894,11 @@ button {
   .create-repo-fab {
     right: 18px;
     bottom: 18px;
+  }
+
+  .delete-result-notice {
+    right: 16px;
+    bottom: 90px;
   }
 
   .analytics-card {

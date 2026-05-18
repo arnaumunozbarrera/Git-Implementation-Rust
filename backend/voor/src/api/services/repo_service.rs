@@ -1,7 +1,15 @@
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use directories::UserDirs;
+
 use crate::api::clients::supabase::SupabaseClient;
 use crate::api::models::{
-    Branch, DeleteActionResponse, InitRepoRequest, InitRepoResponse, Repository,
+    Branch, CloneRepoResponse, DeleteActionResponse, InitRepoRequest, InitRepoResponse, Repository,
 };
+use crate::utils::fs_ops;
+
+const DEFAULT_REMOTE_URL: &str = "http://localhost:3000";
 
 pub async fn get_all_repos(
     client: &SupabaseClient,
@@ -270,4 +278,121 @@ pub async fn delete_repo(
             repo_id
         )),
     })
+}
+
+pub async fn clone_repo_to_desktop(
+    client: &SupabaseClient,
+    user_id: &str,
+    repo_id: &str,
+    default_branch: Option<&str>,
+) -> Result<CloneRepoResponse, String> {
+    let user_id = user_id.trim();
+    let repo_id = repo_id.trim();
+
+    if repo_id.is_empty() {
+        return Err("[ERROR] Missing repo_id".to_string());
+    }
+
+    let repository = sqlx::query_as::<_, Repository>(
+        "SELECT id, name, owner_id, is_private, description, tags, default_branch,
+                stars_count, readme_path, theme, created_at::text AS created_at
+         FROM repositories
+         WHERE id = $1",
+    )
+    .bind(repo_id)
+    .fetch_optional(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to load repository '{}': {}", repo_id, error))?
+    .ok_or_else(|| format!("[ERROR] Repository '{}' not found", repo_id))?;
+
+    if repository.owner_id != user_id {
+        return Err(format!(
+            "[ERROR] User '{}' cannot clone repository '{}'",
+            user_id, repo_id
+        ));
+    }
+
+    let desktop = UserDirs::new()
+        .and_then(|dirs| dirs.desktop_dir().map(Path::to_path_buf))
+        .ok_or_else(|| "[ERROR] Unable to locate Desktop directory".to_string())?;
+    let target = unique_desktop_repo_path(&desktop, &repository.name);
+    fs::create_dir_all(&target)
+        .map_err(|error| format!("[ERROR] Unable to create '{}': {}", target.display(), error))?;
+
+    let voor_dir = target.join(".voor");
+    for directory in [
+        voor_dir.as_path(),
+        &voor_dir.join("objects"),
+        &voor_dir.join("refs"),
+        &voor_dir.join("refs").join("heads"),
+        &voor_dir.join("locks"),
+    ] {
+        fs::create_dir_all(directory)
+            .map_err(|error| format!("[ERROR] Unable to create '{}': {}", directory.display(), error))?;
+    }
+
+    let branch = default_branch
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(repository.default_branch.as_str());
+    write_file(&voor_dir.join("HEAD"), format!("ref: refs/heads/{}", branch).as_bytes())?;
+    write_file(&voor_dir.join("refs").join("heads").join(branch), b"")?;
+    write_file(&voor_dir.join("index"), b"")?;
+    write_file(
+        &voor_dir.join("config"),
+        format!(
+            "[remote \"origin\"]\nurl = {}\nrepo_id = {}\nuser_id = {}\n",
+            DEFAULT_REMOTE_URL, repo_id, user_id
+        )
+        .as_bytes(),
+    )?;
+    write_file(
+        &target.join(".voorignore"),
+        b".env\n\n.voor/\n/.voor/\n\nCargo.lock\nCargo.toml",
+    )?;
+
+    Ok(CloneRepoResponse {
+        message: format!("Cloned repository '{}' to Desktop", repo_id),
+        path: target.display().to_string(),
+    })
+}
+
+fn unique_desktop_repo_path(desktop: &Path, name: &str) -> PathBuf {
+    let base_name = sanitize_folder_name(name);
+    let first = desktop.join(&base_name);
+    if !first.exists() {
+        return first;
+    }
+
+    for index in 2..1000 {
+        let candidate = desktop.join(format!("{}-{}", base_name, index));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+
+    desktop.join(format!("{}-{}", base_name, uuid::Uuid::new_v4()))
+}
+
+fn sanitize_folder_name(name: &str) -> String {
+    let sanitized = name
+        .trim()
+        .chars()
+        .map(|character| match character {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '-',
+            _ => character,
+        })
+        .collect::<String>()
+        .trim_matches([' ', '.'])
+        .to_string();
+
+    if sanitized.is_empty() {
+        "voor-repository".to_string()
+    } else {
+        sanitized
+    }
+}
+
+fn write_file(path: &Path, content: &[u8]) -> Result<(), String> {
+    fs_ops::write_file_atomic(path.to_string_lossy().as_ref(), content)
 }

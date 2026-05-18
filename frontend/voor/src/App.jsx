@@ -1,6 +1,7 @@
 import { SignIn, SignUp, SignedIn, SignedOut, useAuth, useClerk, useUser } from "@clerk/clerk-react";
 import { useEffect, useState } from "react";
 import {
+  cloneRepositoryToDesktop,
   deleteAccountRecords,
   deleteRepository,
   fetchActivityFeed,
@@ -65,6 +66,7 @@ const translations = {
       description: "Description",
       readmePath: "README path",
       cloneAction: "Cloning it",
+      cloneError: "Repository created, but Desktop clone failed",
       isPrivate: "Private repository",
       cancel: "Cancel",
       submit: "Create",
@@ -179,9 +181,11 @@ const translations = {
       dangerDescription: "These actions permanently remove data from the Voor backend.",
       removeRepository: "Remove Repository",
       removeRepositoryHelp: "Deletes the active repository and its related backend records.",
+      cancel: "Cancel",
       deleteAccount: "Delete Account",
       deleteAccountHelp: "Deletes your backend account records and then removes your Clerk account.",
       confirmRemoveRepository: "Remove this repository and its backend records?",
+      deletePrompt: "Voor is asking to delete...",
       confirmDeleteAccount: "Delete your account and backend records?",
       repositoryDeleted: "Repository removed",
       accountDeleted: "Account deleted",
@@ -231,6 +235,7 @@ const translations = {
       description: "Descripcion",
       readmePath: "Ruta README",
       cloneAction: "Clonandolo",
+      cloneError: "Repositorio creado, pero fallo la clonacion al escritorio",
       isPrivate: "Repositorio privado",
       cancel: "Cancelar",
       submit: "Crear",
@@ -345,9 +350,11 @@ const translations = {
       dangerDescription: "Estas acciones eliminan permanentemente datos del backend de Voor.",
       removeRepository: "Eliminar repositorio",
       removeRepositoryHelp: "Elimina el repositorio activo y sus registros relacionados del backend.",
+      cancel: "Cancelar",
       deleteAccount: "Eliminar cuenta",
       deleteAccountHelp: "Elimina tus registros del backend y despues elimina tu cuenta de Clerk.",
       confirmRemoveRepository: "Eliminar este repositorio y sus registros del backend?",
+      deletePrompt: "Voor is asking to delete...",
       confirmDeleteAccount: "Eliminar tu cuenta y registros del backend?",
       repositoryDeleted: "Repositorio eliminado",
       accountDeleted: "Cuenta eliminada",
@@ -565,6 +572,8 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   const [activePage, setActivePage] = useState("overview");
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
+  const [deleteConfirmRepo, setDeleteConfirmRepo] = useState(null);
+  const [deleteNotice, setDeleteNotice] = useState(null);
   const [repositoryState, setRepositoryState] = useState({
     status: "loading",
     repositories: [],
@@ -579,7 +588,6 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
     description: "",
     readmePath: "README.md",
     isPrivate: true,
-    cloneAfterCreate: true,
   });
   const [branchState, setBranchState] = useState({
     status: "idle",
@@ -634,6 +642,18 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
       loadRepositories();
     }
   }, [getToken, isLoaded, isSignedIn]);
+
+  useEffect(() => {
+    if (!deleteNotice) {
+      return undefined;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setDeleteNotice(null);
+    }, 3600);
+
+    return () => window.clearTimeout(timeout);
+  }, [deleteNotice]);
 
   useEffect(() => {
     let active = true;
@@ -731,16 +751,33 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
       return;
     }
 
-    if (!window.confirm(copy.settings.confirmRemoveRepository)) {
+    setDeleteConfirmRepo(activeRepository);
+  };
+
+  const confirmDeleteRepository = async () => {
+    const repository = deleteConfirmRepo;
+    if (!repository) {
       return;
     }
 
+    setDeleteConfirmRepo(null);
+
     try {
-      await deleteRepository(activeRepository.id, getToken);
+      await deleteRepository(repository.id, getToken);
       loadRepositories();
       setSaveStatus(copy.settings.repositoryDeleted);
+      setDeleteNotice({
+        tone: "success",
+        title: copy.settings.repositoryDeleted,
+        message: repository.name || repository.id,
+      });
     } catch {
       setSaveStatus(copy.settings.destructiveError);
+      setDeleteNotice({
+        tone: "error",
+        title: copy.settings.destructiveError,
+        message: repository.name || repository.id,
+      });
     }
   };
 
@@ -790,6 +827,11 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
         },
         getToken,
       );
+      try {
+        await cloneRepositoryToDesktop(repoId, { default_branch: createRepoForm.defaultBranch.trim() || "main" }, getToken);
+      } catch {
+        setSaveStatus(copy.repository.cloneError);
+      }
 
       setCreateRepoStatus("created");
       setCreateRepoOpen(false);
@@ -799,11 +841,10 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
         description: "",
         readmePath: "README.md",
         isPrivate: true,
-        cloneAfterCreate: true,
       });
       loadRepositories();
       setSelectedRepositoryId(repoId);
-      setSaveStatus(copy.repository.created);
+      setSaveStatus((current) => current || copy.repository.created);
     } catch {
       setCreateRepoStatus("error");
     }
@@ -972,6 +1013,17 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
           status={createRepoStatus}
         />
       ) : null}
+      {deleteConfirmRepo ? (
+        <DeleteRepositoryModal
+          copy={copy.settings}
+          repository={deleteConfirmRepo}
+          onCancel={() => setDeleteConfirmRepo(null)}
+          onConfirm={confirmDeleteRepository}
+        />
+      ) : null}
+      {deleteNotice ? (
+        <DeleteResultNotice notice={deleteNotice} />
+      ) : null}
     </div>
   );
 }
@@ -1095,10 +1147,6 @@ function CreateRepositoryModal({ copy, form, onClose, onSubmit, onUpdate, status
               <input checked={form.isPrivate} type="checkbox" onChange={(event) => onUpdate("isPrivate", event.target.checked)} />
               <span>{copy.isPrivate}</span>
             </label>
-            <label>
-              <input checked={form.cloneAfterCreate} type="checkbox" onChange={(event) => onUpdate("cloneAfterCreate", event.target.checked)} />
-              <span>{copy.cloneAction}</span>
-            </label>
           </div>
 
           {status === "error" ? <p className="modal-status modal-status-error">{copy.createError}</p> : null}
@@ -1112,6 +1160,46 @@ function CreateRepositoryModal({ copy, form, onClose, onSubmit, onUpdate, status
         </form>
       </section>
     </div>
+  );
+}
+
+function DeleteRepositoryModal({ copy, onCancel, onConfirm, repository }) {
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="modal-panel delete-repo-modal" role="dialog" aria-modal="true" aria-labelledby="delete-repo-title">
+        <header className="modal-header">
+          <div>
+            <p className="label-caps">{copy.dangerEyebrow}</p>
+            <h2 id="delete-repo-title">{copy.removeRepository}</h2>
+          </div>
+          <button className="icon-button" type="button" aria-label={copy.cancel} onClick={onCancel}>
+            <span className="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        </header>
+        <div className="modal-form">
+          <p className="modal-description">{copy.deletePrompt}</p>
+          <strong className="delete-repo-name">{repository.name || repository.id}</strong>
+          <footer className="modal-actions">
+            <button className="secondary-button" type="button" onClick={onCancel}>{copy.cancel}</button>
+            <button className="danger-button" type="button" onClick={onConfirm}>{copy.removeRepository}</button>
+          </footer>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function DeleteResultNotice({ notice }) {
+  return (
+    <aside className={`delete-result-notice delete-result-${notice.tone}`} role="status">
+      <span className="material-symbols-outlined" aria-hidden="true">
+        {notice.tone === "success" ? "check_circle" : "error"}
+      </span>
+      <div>
+        <strong>{notice.title}</strong>
+        {notice.message ? <p>{notice.message}</p> : null}
+      </div>
+    </aside>
   );
 }
 

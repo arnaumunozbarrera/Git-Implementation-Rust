@@ -7,10 +7,12 @@ use axum::{
 use crate::api::api::AppState;
 use crate::api::auth::{self, AuthenticatedUser};
 use crate::api::models::{
-    Branch, DeleteActionResponse, InitRepoRequest, InitRepoResponse, Repository,
+    Branch, CloneRepoRequest, CloneRepoResponse, DeleteActionResponse, InitRepoRequest,
+    InitRepoResponse, Repository,
 };
 use crate::api::services::repo_service::{
-    delete_repo as delete_repo_service, get_all_repos, get_repo_branches,
+    clone_repo_to_desktop as clone_repo_to_desktop_service, delete_repo as delete_repo_service,
+    get_all_repos, get_repo_branches,
     init_repo as init_repo_service,
 };
 use crate::utils::service_monitor::LogLevel;
@@ -185,6 +187,43 @@ pub async fn delete_repo(
     }
 }
 
+pub async fn clone_repo_to_desktop(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(repo_id): Path<String>,
+    Json(payload): Json<CloneRepoRequest>,
+) -> Result<Json<CloneRepoResponse>, (StatusCode, String)> {
+    let Some(client) = state.client.as_ref() else {
+        let message = "[ERROR] Supabase client not configured".to_string();
+        state
+            .monitor
+            .log(LogLevel::Warn, "backend", "clone-repo-unavailable", &message);
+        return Err((StatusCode::SERVICE_UNAVAILABLE, message));
+    };
+
+    auth::ensure_user_exists(Some(client), &user)
+        .await
+        .map_err(|message| (StatusCode::INTERNAL_SERVER_ERROR, message))?;
+
+    match clone_repo_to_desktop_service(client, &user.user_id, &repo_id, payload.default_branch.as_deref()).await {
+        Ok(response) => {
+            state.monitor.log(
+                LogLevel::Info,
+                "backend",
+                "clone-repo-finish",
+                &response.message,
+            );
+            Ok(Json(response))
+        }
+        Err(message) => {
+            state
+                .monitor
+                .log(LogLevel::Warn, "backend", "clone-repo-failed", &message);
+            Err((classify_clone_error(&message), message))
+        }
+    }
+}
+
 fn classify_init_error(message: &str) -> StatusCode {
     if message.contains("not configured") {
         StatusCode::SERVICE_UNAVAILABLE
@@ -221,6 +260,20 @@ fn classify_branch_error(message: &str) -> StatusCode {
     } else if message.contains("not found") {
         StatusCode::NOT_FOUND
     } else if message.contains("cannot access") {
+        StatusCode::FORBIDDEN
+    } else {
+        StatusCode::INTERNAL_SERVER_ERROR
+    }
+}
+
+fn classify_clone_error(message: &str) -> StatusCode {
+    if message.contains("not configured") {
+        StatusCode::SERVICE_UNAVAILABLE
+    } else if message.contains("Missing ") {
+        StatusCode::BAD_REQUEST
+    } else if message.contains("not found") {
+        StatusCode::NOT_FOUND
+    } else if message.contains("cannot clone") {
         StatusCode::FORBIDDEN
     } else {
         StatusCode::INTERNAL_SERVER_ERROR

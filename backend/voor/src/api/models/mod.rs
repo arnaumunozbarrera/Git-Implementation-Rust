@@ -24,7 +24,7 @@ pub use frontend::{
     RepositoryStorageSummary, UserSummary,
 };
 pub use repo_access_logs::RepoAccessLog;
-pub use repositories::{DeleteActionResponse, InitRepoRequest, InitRepoResponse, Repository};
+pub use repositories::{CloneRepoRequest, CloneRepoResponse, DeleteActionResponse, InitRepoRequest, InitRepoResponse, Repository};
 pub use stars::Star;
 pub use tree_entries::TreeEntry;
 pub use trees::Tree;
