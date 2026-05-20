@@ -31,7 +31,7 @@ function formatDuration(milliseconds) {
 }
 
 function normalizeHealth(health) {
-  return String(health || "unknown").toLowerCase();
+  return String(health || "").toLowerCase();
 }
 
 export function SystemHealthCard({ copy }) {

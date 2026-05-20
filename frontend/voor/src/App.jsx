@@ -6,7 +6,6 @@ import {
   deleteRepository,
   fetchActivityFeed,
   fetchAnalyticsOverview,
-  fetchBranches,
   fetchCommitGraph,
   fetchCommitHistory,
   fetchRepositories,
@@ -14,6 +13,7 @@ import {
   updateAccountProfile,
 } from "./api.js";
 import { SystemHealthCard } from "./components/SystemHealthCard.jsx";
+import { BranchGraph } from "./components/vcs/branch-graph/BranchGraph.jsx";
 
 const navItems = [
   { id: "overview", icon: "dashboard" },
@@ -100,7 +100,6 @@ const translations = {
             degraded: "Degraded",
             down: "Down",
             healthy: "Healthy",
-            unknown: "Unknown",
             warning: "Warning",
           },
         },
@@ -271,7 +270,6 @@ const translations = {
             degraded: "Degradado",
             down: "Caido",
             healthy: "Correcto",
-            unknown: "Desconocido",
             warning: "Aviso",
           },
         },
@@ -594,13 +592,6 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
     readmePath: "README.md",
     isPrivate: true,
   });
-  const [branchState, setBranchState] = useState({
-    status: "idle",
-    branches: [],
-    error: null,
-  });
-  const [selectedBranchName, setSelectedBranchName] = useState("");
-
   useEffect(() => {
     if (!user) {
       return;
@@ -671,51 +662,6 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
 
     return () => window.clearTimeout(timeout);
   }, [cloneNotice]);
-
-  useEffect(() => {
-    let active = true;
-
-    if (!selectedRepositoryId || !isLoaded || !isSignedIn) {
-      setBranchState({ status: "idle", branches: [], error: null });
-      setSelectedBranchName("");
-      return () => {
-        active = false;
-      };
-    }
-
-    setBranchState({ status: "loading", branches: [], error: null });
-    fetchBranches(selectedRepositoryId, getToken)
-      .then((branches) => {
-        if (!active) {
-          return;
-        }
-
-        const normalizedBranches = Array.isArray(branches) ? branches : [];
-        setBranchState({ status: "ready", branches: normalizedBranches, error: null });
-        setSelectedBranchName((current) => {
-          if (current && normalizedBranches.some((branch) => branch.name === current)) {
-            return current;
-          }
-
-          const selectedRepository = repositoryState.repositories.find((repository) => repository.id === selectedRepositoryId);
-          return (
-            normalizedBranches.find((branch) => branch.name === selectedRepository?.default_branch)?.name ??
-            normalizedBranches[0]?.name ??
-            ""
-          );
-        });
-      })
-      .catch((error) => {
-        if (active) {
-          setBranchState({ status: "unavailable", branches: [], error: error.message });
-          setSelectedBranchName("");
-        }
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [getToken, isLoaded, isSignedIn, repositoryState.repositories, selectedRepositoryId]);
 
   const updateSetting = (key, value) => {
     setSaveStatus("");
@@ -877,7 +823,6 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   const accountEmail = emailFromUser(user, settings);
   const profileInitials = initialsFromUsername(settings.username || accountName || accountEmail);
   const activeRepository = repositoryState.repositories.find((repository) => repository.id === selectedRepositoryId) ?? repositoryState.repositories[0] ?? null;
-  const activeBranch = branchState.branches.find((branch) => branch.name === selectedBranchName) ?? null;
   const repositoryCopy = copy.repository;
   const repoVisibility = activeRepository ? repositoryCopy[visibilityFromRepository(activeRepository)] : repositoryCopy.noData;
   const backendUnavailable = repositoryState.status === "unavailable";
@@ -924,7 +869,7 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
 
       <header className="top-bar">
         <div className="repo-context">
-          <span className={`visibility-pill visibility-${visibilityFromRepository(activeRepository) || "unknown"}`}>
+          <span className={`visibility-pill visibility-${visibilityFromRepository(activeRepository)}`}>
             {repoVisibility}
           </span>
           <label className="context-select-label">
@@ -997,15 +942,9 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
         ) : activePage === "overview" ? (
           <OverviewPage getToken={getToken} page={copy.pages.overview} repoId={activeRepository?.id} />
         ) : activePage === "branches" ? (
-          <BranchesPage
-            branch={activeBranch}
-            branches={branchState.branches}
-            branchName={selectedBranchName}
+          <BranchGraph
             getToken={getToken}
-            onSelectBranch={setSelectedBranchName}
-            page={copy.pages.branches}
-            repoId={activeRepository?.id}
-            status={branchState.status}
+            repository={activeRepository}
           />
         ) : (
           <EmptySection page={copy.pages[activePage]} />
@@ -1315,7 +1254,7 @@ function getLatestActivity(data) {
 
 function activityAccentFor(value) {
   const palette = ["#58a6ff", "#7ee787", "#ffba42", "#d2a8ff", "#ff7b72", "#39c5cf", "#ffa657"];
-  const seed = String(value || "unknown");
+  const seed = String(value || "");
   let hash = 0;
 
   for (let index = 0; index < seed.length; index += 1) {

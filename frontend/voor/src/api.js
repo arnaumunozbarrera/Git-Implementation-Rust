@@ -99,6 +99,10 @@ export async function fetchAnalyticsOverview(repoId, getToken) {
   return response.json();
 }
 
+export async function fetchVcsAnalytics(repoId, getToken) {
+  return fetchWithClerkAuth(`/repos/${encodeURIComponent(repoId)}/analytics/vcs`, getToken);
+}
+
 export async function fetchActivityFeed(repoId, getToken, limit = 10, action) {
   const params = new URLSearchParams({ limit: String(limit), offset: "0" });
   if (action) {

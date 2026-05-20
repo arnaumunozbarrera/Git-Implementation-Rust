@@ -1904,6 +1904,496 @@ button {
   padding: 8px 16px;
 }
 
+.vcs-observability-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.vcs-branch-sidebar,
+.vcs-graph-panel {
+  min-height: 618px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-container) 62%, transparent), transparent 34%),
+    var(--surface);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 3%), 0 18px 60px rgb(0 0 0 / 18%);
+}
+
+.vcs-branch-sidebar {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.vcs-panel-header {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-container) 82%, transparent);
+  padding: 12px 16px;
+}
+
+.vcs-panel-header h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.vcs-count-pill,
+.vcs-status-badge {
+  flex: 0 0 auto;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--outline);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 14px;
+  padding: 3px 7px;
+  text-transform: uppercase;
+}
+
+.branch-status-legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--canvas) 38%, transparent);
+  padding: 12px;
+}
+
+.branch-legend-item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px;
+  min-width: 0;
+}
+
+.branch-legend-item strong {
+  display: block;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.branch-legend-item span:last-child {
+  display: block;
+  color: var(--outline);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.branch-status-dot {
+  width: 7px;
+  height: 7px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: var(--outline);
+  box-shadow: 0 0 14px currentColor;
+}
+
+.branch-status-active,
+.branch-status-dot.branch-status-active {
+  border-color: rgb(126 231 135 / 45%);
+  background: rgb(35 134 54 / 18%);
+  color: #7ee787;
+}
+
+.branch-status-idle,
+.branch-status-dot.branch-status-idle {
+  border-color: rgb(255 186 66 / 45%);
+  background: rgb(218 150 0 / 16%);
+  color: var(--warning);
+}
+
+.branch-status-outdated,
+.branch-status-dot.branch-status-outdated {
+  border-color: rgba(255, 123, 114, 0.48);
+  background: rgba(255, 123, 114, 0.12);
+  color: #ff7b72;
+}
+
+.branch-status-default,
+.branch-status-dot.branch-status-default {
+  border-color: rgb(88 166 255 / 46%);
+  background: rgb(88 166 255 / 14%);
+  color: var(--primary-strong);
+}
+
+.vcs-branch-list {
+  min-height: 0;
+  overflow: auto;
+  padding: 6px;
+}
+
+.vcs-branch-row {
+  display: grid;
+  width: 100%;
+  gap: 9px;
+  border: 1px solid color-mix(in srgb, var(--branch-accent) 44%, var(--border));
+  border-left: 2px solid var(--branch-accent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--branch-accent) 10%, var(--surface-container));
+  color: inherit;
+  padding: 12px 10px;
+  text-align: left;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 2%), 0 0 28px color-mix(in srgb, var(--branch-accent) 13%, transparent);
+  transform: translateY(-1px);
+}
+
+.vcs-branch-row + .vcs-branch-row {
+  margin-top: 4px;
+}
+
+.vcs-branch-row-heading {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.vcs-branch-row-heading .material-symbols-outlined {
+  flex: 0 0 auto;
+  color: var(--branch-accent);
+  font-size: 17px;
+}
+
+.vcs-branch-row-heading strong {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vcs-branch-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.vcs-branch-metrics span {
+  display: grid;
+  gap: 1px;
+}
+
+.vcs-branch-metrics small {
+  color: var(--outline);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 9px;
+  line-height: 12px;
+}
+
+.vcs-branch-metrics strong {
+  color: var(--branch-accent);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.vcs-branch-row-footer {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--outline);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.vcs-branch-row-footer span,
+.vcs-branch-row-footer time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vcs-branch-row-footer time {
+  flex: 0 0 auto;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.vcs-activity-track {
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--canvas);
+}
+
+.vcs-activity-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--branch-accent) 32%, transparent), var(--branch-accent));
+}
+
+.vcs-graph-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.branch-graph-stage {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 78% 48%, rgb(88 166 255 / 8%), transparent 24%),
+    radial-gradient(circle at 26% 52%, rgb(126 231 135 / 5%), transparent 22%),
+    var(--canvas);
+}
+
+.branch-topology-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 500px;
+}
+
+.graph-baseline line {
+  stroke: rgba(139, 145, 157, 0.22);
+  stroke-width: 2;
+}
+
+.branch-path-layer {
+  opacity: 0.86;
+  transition: opacity 160ms ease, filter 160ms ease;
+}
+
+.branch-path-layer.muted {
+  opacity: 0.22;
+}
+
+.branch-path-layer.active {
+  opacity: 1;
+  filter: drop-shadow(0 0 12px rgb(88 166 255 / 18%));
+}
+
+.branch-path-shadow,
+.branch-path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.branch-path-shadow {
+  stroke: rgb(0 0 0 / 42%);
+  stroke-width: 8;
+}
+
+.branch-path {
+  stroke-width: 3;
+  stroke-dasharray: 1200;
+  stroke-dashoffset: 1200;
+  animation: topology-path-draw 950ms ease forwards;
+}
+
+.commit-graph-node {
+  color: var(--primary-strong);
+  cursor: pointer;
+  opacity: 0.92;
+  outline: none;
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.commit-graph-node:not(.active) {
+  opacity: 0.38;
+}
+
+.commit-graph-node.hovered,
+.commit-graph-node:hover {
+  opacity: 1;
+}
+
+.commit-node-glow {
+  fill: currentColor;
+  opacity: 0.16;
+  filter: blur(1px);
+}
+
+.commit-node-core {
+  fill: var(--surface);
+  stroke: currentColor;
+  stroke-width: 2;
+}
+
+.commit-graph-node.default {
+  color: #a5d6ff;
+}
+
+.commit-graph-node.stale {
+  color: #8b919d;
+  opacity: 0.48;
+}
+
+.commit-graph-node.head {
+  color: var(--primary-strong);
+}
+
+.commit-head-pulse {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  opacity: 0.6;
+  transform-origin: center;
+  animation: topology-head-pulse 1900ms ease-in-out infinite;
+}
+
+.commit-head-label rect {
+  fill: color-mix(in srgb, var(--surface-container) 88%, transparent);
+  stroke: var(--border);
+}
+
+.commit-head-label text {
+  fill: var(--primary);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.branch-graph-tooltip {
+  position: absolute;
+  z-index: 4;
+  width: min(230px, 42vw);
+  transform: translate(12px, -50%);
+  pointer-events: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 35%);
+  backdrop-filter: blur(12px);
+  padding: 9px 10px;
+}
+
+.branch-graph-tooltip strong,
+.branch-graph-tooltip code {
+  color: var(--primary-strong);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.branch-graph-tooltip strong {
+  display: block;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.branch-graph-tooltip span {
+  display: block;
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 17px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.branch-graph-tooltip small,
+.branch-graph-tooltip code {
+  display: block;
+  margin-top: 4px;
+  color: var(--outline);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.branch-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-container) 54%, transparent);
+}
+
+.branch-metric {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+  padding: 13px 16px;
+}
+
+.branch-metric:last-child {
+  border-right: 0;
+}
+
+.branch-metric span {
+  color: var(--outline);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 14px;
+}
+
+.branch-metric strong {
+  color: var(--metric-accent);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 22px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vcs-empty-state,
+.vcs-graph-empty {
+  margin: 0;
+  color: var(--outline);
+  font-size: 12px;
+  line-height: 18px;
+  padding: 16px;
+}
+
+.vcs-graph-empty {
+  display: grid;
+  min-height: 500px;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+}
+
+.vcs-graph-empty .material-symbols-outlined {
+  color: var(--outline-variant);
+  font-size: 38px;
+}
+
+@keyframes topology-path-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes topology-head-pulse {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: scale(0.88);
+  }
+
+  50% {
+    opacity: 0.72;
+    transform: scale(1.12);
+  }
+}
+
 @media (max-width: 900px) {
   .login-shell {
     padding: 28px;
@@ -1984,6 +2474,19 @@ button {
 
   .branch-layout {
     grid-template-columns: 1fr;
+  }
+
+  .vcs-observability-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .vcs-branch-sidebar,
+  .vcs-graph-panel {
+    min-height: auto;
+  }
+
+  .vcs-branch-list {
+    max-height: 420px;
   }
 
   .branch-graph-panel {
@@ -2088,6 +2591,25 @@ button {
   .activity-footer {
     flex-direction: column;
     gap: 4px;
+  }
+
+  .branch-status-legend,
+  .branch-metrics-row {
+    grid-template-columns: 1fr;
+  }
+
+  .branch-metric {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .branch-metric:last-child {
+    border-bottom: 0;
+  }
+
+  .vcs-panel-header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .danger-action-row {

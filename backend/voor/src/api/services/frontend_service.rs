@@ -10,7 +10,8 @@ use crate::api::models::{
     ActivityFeedItem, AnalyticsOverviewResponse, CommitGraphNode, CommitGraphResponse,
     BranchCommitDistributionItem, CommitSummary, ContentEntry, ContentsResponse, FileContentResponse,
     PaginationResponse, ReadmePreview, RepoDashboardResponse, Repository, RepositoryFileSummary,
-    RepositoryStorageSummary, UserSummary,
+    RepositoryStorageSummary, UserSummary, VcsAnalyticsResponse, VcsBranchAnalytics,
+    VcsTimelineBucket, VcsTopologyCacheItem,
 };
 use crate::utils::object_store::{self, ObjectType};
 
@@ -256,19 +257,32 @@ pub async fn get_commit_graph(
 
     let branches_by_head = load_branches_by_head(client, repo_id).await?;
     let rows = sqlx::query(
-        "WITH RECURSIVE commit_chain AS (
-            SELECT c.hash, c.parent_hash, 0 AS depth
+        "WITH RECURSIVE commit_chain(hash, depth) AS (
+            SELECT $2::text AS hash, 0 AS depth
+            UNION
+            SELECT ce.parent_hash, chain.depth + 1
+            FROM commit_edges ce
+            JOIN commit_chain chain ON ce.child_hash = chain.hash
+            WHERE ce.repo_id = $1 AND chain.depth + 1 < $3
+            UNION
+            SELECT c.parent_hash, chain.depth + 1
             FROM commits c
-            WHERE c.hash = $2
-            UNION ALL
-            SELECT parent.hash, parent.parent_hash, child.depth + 1
-            FROM commits parent
-            JOIN commit_chain child ON parent.hash = child.parent_hash
-            WHERE child.depth + 1 < $3
+            JOIN commit_chain chain ON c.hash = chain.hash
+            WHERE c.parent_hash IS NOT NULL AND chain.depth + 1 < $3
          )
          SELECT DISTINCT
             c.hash,
-            c.parent_hash,
+            COALESCE(
+                (
+                    SELECT array_agg(ce.parent_hash ORDER BY ce.parent_index)
+                    FROM commit_edges ce
+                    WHERE ce.repo_id = $1 AND ce.child_hash = c.hash
+                ),
+                CASE
+                    WHEN c.parent_hash IS NULL THEN ARRAY[]::text[]
+                    ELSE ARRAY[c.parent_hash]
+                END
+            ) AS parent_hashes,
             c.message,
             c.created_at::text AS created_at,
             u.id AS author_id,
@@ -294,10 +308,9 @@ pub async fn get_commit_graph(
     let mut nodes = Vec::with_capacity(rows.len());
     for row in rows {
         let hash = row.get::<String, _>("hash");
-        let parent_hash = row.get::<Option<String>, _>("parent_hash");
         nodes.push(CommitGraphNode {
             hash: hash.clone(),
-            parent_hashes: parent_hash.into_iter().collect(),
+            parent_hashes: row.get::<Vec<String>, _>("parent_hashes"),
             message: row.get::<String, _>("message"),
             created_at: row.get::<String, _>("created_at"),
             author: UserSummary {
@@ -519,6 +532,211 @@ pub async fn get_analytics_overview(
         repository_size_bytes: storage_summary.bytes,
         object_count: storage_summary.objects,
         branch_commit_distribution,
+    })
+}
+
+pub async fn get_vcs_analytics(
+    client: &SupabaseClient,
+    repo_id: &str,
+) -> Result<VcsAnalyticsResponse, String> {
+    ensure_local_repo(repo_id)?;
+    let repo = load_repository(client, repo_id).await?;
+
+    let branch_rows = sqlx::query(
+        "SELECT
+            b.id::text AS branch_id,
+            b.name,
+            b.last_commit_hash,
+            b.created_at::text AS created_at,
+            b.last_activity_at::text AS last_activity_at,
+            b.last_analyzed_at::text AS last_analyzed_at,
+            COALESCE(b.is_default_cached, false) OR b.name = r.default_branch AS is_default,
+            COALESCE(bm.default_branch_name, r.default_branch) AS default_branch_name,
+            COALESCE(bm.head_commit_hash, b.last_commit_hash) AS head_commit_hash,
+            bm.default_head_hash,
+            bm.merge_base_hash,
+            COALESCE(bm.ahead_count, 0)::bigint AS ahead_count,
+            COALESCE(bm.behind_count, 0)::bigint AS behind_count,
+            COALESCE(bm.divergence_distance, 0)::bigint AS divergence_distance,
+            bm.freshness_status,
+            bm.freshness_score::double precision AS freshness_score,
+            bm.health_score::double precision AS health_score,
+            COALESCE(bm.stale_days, 0)::int AS stale_days,
+            bm.computed_at::text AS computed_at,
+            btm.lane_index,
+            btm.lane_color,
+            btm.start_commit_hash,
+            btm.head_commit_hash AS topology_head_commit_hash,
+            btm.merge_base_hash AS topology_merge_base_hash,
+            btm.first_seen_at::text AS first_seen_at,
+            btm.last_seen_at::text AS last_seen_at,
+            btm.commit_density::double precision AS commit_density,
+            btm.activity_heat::double precision AS activity_heat,
+            c.hash AS latest_hash,
+            COALESCE(
+                (
+                    SELECT array_agg(ce.parent_hash ORDER BY ce.parent_index)
+                    FROM commit_edges ce
+                    WHERE ce.repo_id = b.repo_id AND ce.child_hash = c.hash
+                ),
+                CASE
+                    WHEN c.parent_hash IS NULL THEN ARRAY[]::text[]
+                    ELSE ARRAY[c.parent_hash]
+                END
+            ) AS latest_parent_hashes,
+            c.message AS latest_message,
+            c.created_at::text AS latest_created_at,
+            u.id AS latest_author_id,
+            u.username AS latest_username,
+            u.email AS latest_email
+         FROM branches b
+         JOIN repositories r ON r.id = b.repo_id
+         LEFT JOIN branch_metrics bm ON bm.repo_id = b.repo_id AND bm.branch_name = b.name
+         LEFT JOIN branch_topology_metrics btm ON btm.repo_id = b.repo_id AND btm.branch_name = b.name
+         LEFT JOIN commits c ON c.hash = COALESCE(bm.head_commit_hash, b.last_commit_hash)
+         LEFT JOIN users u ON u.id = c.author_id
+         WHERE b.repo_id = $1
+         ORDER BY
+            CASE WHEN b.name = r.default_branch THEN 0 ELSE 1 END,
+            COALESCE(btm.lane_index, 999),
+            COALESCE(bm.divergence_distance, 0) DESC,
+            b.name ASC",
+    )
+    .bind(repo_id)
+    .fetch_all(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to load VCS branch analytics for '{}': {}", repo_id, error))?;
+
+    let branches = branch_rows
+        .into_iter()
+        .map(|row| {
+            let latest_hash = row.get::<Option<String>, _>("latest_hash");
+            let latest_commit = latest_hash.map(|hash| CommitGraphNode {
+                hash,
+                parent_hashes: row.get::<Vec<String>, _>("latest_parent_hashes"),
+                message: row
+                    .get::<Option<String>, _>("latest_message")
+                    .unwrap_or_default(),
+                created_at: row
+                    .get::<Option<String>, _>("latest_created_at")
+                    .unwrap_or_default(),
+                author: UserSummary {
+                    id: row
+                        .get::<Option<String>, _>("latest_author_id")
+                        .unwrap_or_default(),
+                    username: row.get::<Option<String>, _>("latest_username"),
+                    email: row.get::<Option<String>, _>("latest_email"),
+                },
+                branches: vec![row.get::<String, _>("name")],
+            });
+
+            VcsBranchAnalytics {
+                id: row.get::<Option<String>, _>("branch_id"),
+                name: row.get::<String, _>("name"),
+                last_commit_hash: row.get::<Option<String>, _>("last_commit_hash"),
+                created_at: row.get::<String, _>("created_at"),
+                last_activity_at: row.get::<Option<String>, _>("last_activity_at"),
+                last_analyzed_at: row.get::<Option<String>, _>("last_analyzed_at"),
+                is_default: row.get::<bool, _>("is_default"),
+                default_branch_name: row.get::<String, _>("default_branch_name"),
+                head_commit_hash: row.get::<Option<String>, _>("head_commit_hash"),
+                default_head_hash: row.get::<Option<String>, _>("default_head_hash"),
+                merge_base_hash: row
+                    .get::<Option<String>, _>("merge_base_hash")
+                    .or_else(|| row.get::<Option<String>, _>("topology_merge_base_hash")),
+                ahead_count: row.get::<i64, _>("ahead_count"),
+                behind_count: row.get::<i64, _>("behind_count"),
+                divergence_distance: row.get::<i64, _>("divergence_distance"),
+                freshness_status: row.get::<Option<String>, _>("freshness_status"),
+                freshness_score: row.get::<Option<f64>, _>("freshness_score"),
+                health_score: row.get::<Option<f64>, _>("health_score"),
+                stale_days: row.get::<i32, _>("stale_days"),
+                computed_at: row.get::<Option<String>, _>("computed_at"),
+                lane_index: row.get::<Option<i32>, _>("lane_index"),
+                lane_color: row.get::<Option<String>, _>("lane_color"),
+                start_commit_hash: row.get::<Option<String>, _>("start_commit_hash"),
+                first_seen_at: row.get::<Option<String>, _>("first_seen_at"),
+                last_seen_at: row.get::<Option<String>, _>("last_seen_at"),
+                commit_density: row.get::<Option<f64>, _>("commit_density"),
+                activity_heat: row.get::<Option<f64>, _>("activity_heat"),
+                latest_commit,
+            }
+        })
+        .collect();
+
+    let topology_rows = sqlx::query(
+        "SELECT
+            branch_name,
+            head_commit_hash,
+            layout_version,
+            COALESCE(nodes, '[]'::jsonb) AS nodes,
+            COALESCE(edges, '[]'::jsonb) AS edges,
+            COALESCE(lanes, '[]'::jsonb) AS lanes,
+            COALESCE(clusters, '[]'::jsonb) AS clusters,
+            computed_at::text AS computed_at
+         FROM commit_topology_cache
+         WHERE repo_id = $1
+         ORDER BY computed_at DESC",
+    )
+    .bind(repo_id)
+    .fetch_all(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to load topology cache for '{}': {}", repo_id, error))?;
+
+    let topology_cache = topology_rows
+        .into_iter()
+        .map(|row| VcsTopologyCacheItem {
+            branch_name: row.get::<String, _>("branch_name"),
+            head_commit_hash: row.get::<String, _>("head_commit_hash"),
+            layout_version: row.get::<Option<String>, _>("layout_version"),
+            nodes: row.get::<serde_json::Value, _>("nodes"),
+            edges: row.get::<serde_json::Value, _>("edges"),
+            lanes: row.get::<serde_json::Value, _>("lanes"),
+            clusters: row.get::<serde_json::Value, _>("clusters"),
+            computed_at: row.get::<Option<String>, _>("computed_at"),
+        })
+        .collect();
+
+    let timeline_rows = sqlx::query(
+        "SELECT
+            bucket_start::text AS bucket_start,
+            bucket_granularity,
+            COALESCE(commit_count, 0)::bigint AS commit_count,
+            COALESCE(author_count, 0)::bigint AS author_count,
+            COALESCE(branch_count, 0)::bigint AS branch_count,
+            COALESCE(additions, 0)::bigint AS additions,
+            COALESCE(deletions, 0)::bigint AS deletions,
+            COALESCE(audit_event_count, 0)::bigint AS audit_event_count
+         FROM timeline_aggregation
+         WHERE repo_id = $1
+         ORDER BY bucket_start DESC
+         LIMIT 64",
+    )
+    .bind(repo_id)
+    .fetch_all(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to load VCS timeline for '{}': {}", repo_id, error))?;
+
+    let timeline = timeline_rows
+        .into_iter()
+        .map(|row| VcsTimelineBucket {
+            bucket_start: row.get::<String, _>("bucket_start"),
+            bucket_granularity: row.get::<String, _>("bucket_granularity"),
+            commit_count: row.get::<i64, _>("commit_count"),
+            author_count: row.get::<i64, _>("author_count"),
+            branch_count: row.get::<i64, _>("branch_count"),
+            additions: row.get::<i64, _>("additions"),
+            deletions: row.get::<i64, _>("deletions"),
+            audit_event_count: row.get::<i64, _>("audit_event_count"),
+        })
+        .collect();
+
+    Ok(VcsAnalyticsResponse {
+        repo_id: repo_id.to_string(),
+        default_branch: repo.default_branch,
+        branches,
+        topology_cache,
+        timeline,
     })
 }
 

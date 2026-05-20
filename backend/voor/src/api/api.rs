@@ -15,7 +15,7 @@ use crate::api::auth::{self, AuthConfig};
 use crate::api::clients::supabase::SupabaseClient;
 use crate::api::routes::frontend_routes::{
     get_activity_feed, get_analytics_overview, get_commit_graph, get_commit_history,
-    get_repo_contents, get_repo_dashboard, get_repo_file,
+    get_repo_contents, get_repo_dashboard, get_repo_file, get_vcs_analytics,
 };
 use crate::api::routes::health_routes::get_health;
 use crate::api::routes::repo_routes::{
@@ -127,6 +127,10 @@ pub async fn api() {
         .route(
             "/repos/:repo_id/analytics/overview",
             get(get_analytics_overview),
+        )
+        .route(
+            "/repos/:repo_id/analytics/vcs",
+            get(get_vcs_analytics),
         )
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
