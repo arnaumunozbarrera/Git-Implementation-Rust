@@ -3,6 +3,7 @@ import { useBranchMetrics } from "../../../hooks/useBranchMetrics.js";
 import { useBranchTopology } from "../../../hooks/useBranchTopology.js";
 import { useRepositoryAnalytics } from "../../../hooks/useRepositoryAnalytics.js";
 import { BranchMetrics } from "./BranchMetrics.jsx";
+import { BranchLabel } from "./BranchLabel.jsx";
 import { BranchNode } from "./BranchNode.jsx";
 import { BranchPath } from "./BranchPath.jsx";
 import { BranchSidebar } from "./BranchSidebar.jsx";
@@ -58,8 +59,9 @@ export function BranchGraph({ getToken, repository }) {
               <>
                 <svg className="branch-topology-svg" viewBox={`0 0 ${topology.width} ${topology.height}`} role="img" aria-label="Commit topology graph" xmlns="http://www.w3.org/2000/svg">
                   <defs>
-                    <pattern id="topology-grid" width="56" height="56" patternUnits="userSpaceOnUse">
-                      <path d="M 56 0 L 0 0 0 56" fill="none" stroke="rgba(139,145,157,0.08)" strokeWidth="1" />
+                    <pattern id="topology-grid" width="52" height="52" patternUnits="userSpaceOnUse">
+                      <path d="M 52 0 L 0 0 0 52" fill="none" stroke="rgba(139,145,157,0.075)" strokeWidth="1" />
+                      <path d="M 0 26 L 52 26 M 26 0 L 26 52" fill="none" stroke="rgba(139,145,157,0.035)" strokeWidth="1" />
                     </pattern>
                     {topology.paths.map((path) => (
                       <linearGradient id={`gradient-${gradientId(path.id)}`} key={path.id} x1="0%" x2="100%" y1="0%" y2="0%">
@@ -100,6 +102,11 @@ export function BranchGraph({ getToken, repository }) {
                         node={node}
                         onHover={setHoveredCommit}
                       />
+                    ))}
+                  </g>
+                  <g className="branch-label-layer">
+                    {topology.labels.map((label) => (
+                      <BranchLabel key={label.id} label={label} />
                     ))}
                   </g>
                 </svg>

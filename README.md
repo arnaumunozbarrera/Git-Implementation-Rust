@@ -23,23 +23,6 @@ The current delivery now behaves more like a real installable tool:
 
 ---
 
-## Download & Install
-
-For the executable download flow, use:
-
-- [docs/download.md](/abs/path/C:/dev/Git-Implementation-Rust/docs/download.md)
-- [docs/executable-validation.md](/abs/path/C:/dev/Git-Implementation-Rust/docs/executable-validation.md)
-
-The intended end-user flow is:
-
-1. Download the correct ZIP asset from GitHub Releases
-2. Extract `voor` or `voor.exe`
-3. Move it to a directory on `PATH`
-4. Run `voor --version`
-5. Use `voor init`, `voor login`, `voor push`, `voor pull`, and `voor serve`
-
----
-
 ## Objectives
 - OB0 - **Development of a version control software:** understand how distributed coordination systems manage local and remote state across shared workspaces while exploring a tailored alternative for personal use cases.
 - OB1 - **Develop a functional system:** provide a working version-control workflow for local and remote collaborative environments.
@@ -107,9 +90,7 @@ The intended end-user flow is:
 │   └── service-monitoring-workflow.md
 ├── frontend/
 │   └── voor/
-└── .github/
-    └── workflows/
-        └── voor-release.yml
+
 ```
 
 ---
@@ -161,23 +142,6 @@ voor pull master
 voor sync-db
 voor logout
 ```
-
-### Server mode
-
-```powershell
-voor serve
-```
-
-The server reads configuration from environment variables such as:
-
-```powershell
-$env:SUPABASE_URL = "<postgres_url>"
-$env:CLERK_JWT_ISSUER = "https://<your-clerk-domain>"
-$env:CLERK_JWKS_URL = "https://<your-clerk-domain>/.well-known/jwks.json"
-$env:CLERK_JWT_AUDIENCE = "<optional_audience>"
-$env:PORT = "3000"
-```
-
 ---
 
 ## Auth
@@ -234,18 +198,7 @@ Critical repo files are written through temporary files and then moved atomicall
 
 ---
 
-## CI/CD
-
-The repository includes a GitHub Actions pipeline at `.github/workflows/voor-release.yml`.
-
-The workflow:
-
-- Runs `cargo fmt --check`
-- Runs `cargo clippy --all-targets --all-features -- -D warnings`
-- Runs `cargo test --all-targets`
-- Builds the `voor` release binary for Linux, macOS, and Windows
-- Packages downloadable ZIP release assets
-- Publishes those assets on GitHub Releases for version tags
+## Releases
 
 Expected release assets:
 
@@ -254,21 +207,3 @@ Expected release assets:
 - `voor-macos-x86_64.zip`
 
 ---
-
-## Brief Execution Plan
-
-1. Build the binary from `backend/voor`
-2. Let GitHub Actions package ZIP release assets
-3. Download the correct asset for the target platform
-4. Extract the executable into a directory on `PATH`
-5. Run `voor --version`
-6. Run `voor init`
-7. Run `voor login`, `voor push`, and `voor pull` against a configured server
-
----
-
-## Validation
-
-For the step-by-step executable validation flow, use:
-
-- [docs/executable-validation.md](/abs/path/C:/dev/Git-Implementation-Rust/docs/executable-validation.md)

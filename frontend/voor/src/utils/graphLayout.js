@@ -1,6 +1,6 @@
 const graphWidth = 1040;
 const graphHeight = 430;
-const padding = { left: 58, right: 46, top: 56, bottom: 66 };
+const padding = { left: 70, right: 70, top: 54, bottom: 74 };
 
 function chronological(nodes) {
   return [...(nodes || [])].reverse();
@@ -19,6 +19,28 @@ function laneOffset(index) {
   return (index % 2 === 0 ? 1 : -1) * ring;
 }
 
+function pathThrough(points) {
+  if (points.length === 0) {
+    return "";
+  }
+
+  return points.reduce((path, point, index) => {
+    if (index === 0) {
+      return `M ${point.x} ${point.y}`;
+    }
+
+    const previous = points[index - 1];
+    const controlX = previous.x + (point.x - previous.x) * 0.52;
+    return `${path} C ${controlX} ${previous.y}, ${controlX} ${point.y}, ${point.x} ${point.y}`;
+  }, "");
+}
+
+function straightPath(points) {
+  return points
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+    .join(" ");
+}
+
 export function layoutTopology({ branches, graphsByBranch, repository, selectedBranchName, hoveredBranchName }) {
   const defaultBranchName = repository?.default_branch || branches?.[0]?.name || "main";
   const sortedBranches = [...(branches || [])].sort((left, right) => {
@@ -33,15 +55,18 @@ export function layoutTopology({ branches, graphsByBranch, repository, selectedB
   const defaultNodes = chronological(defaultGraph.nodes);
   const defaultHashes = new Map(defaultNodes.map((node, index) => [node.hash, index]));
   const span = Math.max(1, defaultNodes.length - 1);
-  const step = (graphWidth - padding.left - padding.right) / Math.max(8, span + 3);
+  const step = (graphWidth - padding.left - padding.right) / Math.max(8, span + 2);
   const centerY = graphHeight / 2;
   const nodeMap = new Map();
   const paths = [];
   const heatZones = [];
+  const labels = [];
+  const defaultPoints = [];
 
   defaultNodes.forEach((node, index) => {
     const x = padding.left + index * step;
     const y = centerY;
+    defaultPoints.push({ x, y });
     nodeMap.set(node.hash, {
       ...node,
       x,
@@ -74,19 +99,33 @@ export function layoutTopology({ branches, graphsByBranch, repository, selectedB
         id: branch.name,
         branchName: branch.name,
         color: branch.accent,
-        d: defaultNodes
-          .map((node, index) => `${index === 0 ? "M" : "L"} ${padding.left + index * step} ${centerY}`)
-          .join(" "),
+        d: straightPath(defaultPoints),
         active: active || !selectedBranchName,
+        isDefault: true,
         muted,
         severity: branch.severity,
+      });
+      labels.push({
+        id: branch.name,
+        branchName: branch.name,
+        x: defaultPoints.at(-1)?.x || graphWidth - padding.right,
+        y: centerY - 42,
+        color: branch.accent,
+        status: branch.status,
+        ahead: branch.divergence?.ahead || 0,
+        behind: branch.divergence?.behind || 0,
+        isDefault: true,
       });
       return;
     }
 
     pathPoints.push({ x: startX, y: centerY });
-    branchOnly.forEach((node, index) => {
-      const x = startX + (index + 1.15) * step * 1.18;
+    const visibleBranchNodes = branchOnly.length > 0
+      ? branchOnly
+      : nodes.filter((node) => node.hash === graph.head).slice(0, 1);
+
+    visibleBranchNodes.forEach((node, index) => {
+      const x = Math.min(graphWidth - padding.right, startX + (index + 1.1) * step * 1.08);
       const intensity = Math.min(1, 0.22 + (branch.divergence?.distance || 0) / 18);
       const y = laneY + Math.sin(index * 0.85) * 8;
       pathPoints.push({ x, y });
@@ -103,29 +142,47 @@ export function layoutTopology({ branches, graphsByBranch, repository, selectedB
       });
     });
 
-    if (pathPoints.length === 1 && graph.head) {
-      const existing = nodeMap.get(graph.head);
-      if (existing) {
-        existing.branchNames.add(branch.name);
-        existing.isHead = true;
-      }
-    }
-
-    const [first, ...rest] = pathPoints;
-    const d = rest.reduce((path, point, index) => {
-      const previous = pathPoints[index];
-      const controlX = previous.x + (point.x - previous.x) * 0.55;
-      return `${path} C ${controlX} ${previous.y}, ${controlX} ${point.y}, ${point.x} ${point.y}`;
-    }, `M ${first.x} ${first.y}`);
+    const branchEnd = pathPoints.at(-1) || pathPoints[0];
+    const mergeTargetIndex = Math.min(defaultPoints.length - 1, Math.max(commonIndex + Math.max(2, visibleBranchNodes.length), commonIndex + 1));
+    const mergeTarget = defaultPoints[mergeTargetIndex];
+    const mergePoints = mergeTarget && branch.status !== "outdated" && (branch.divergence?.behind || 0) !== 0
+      ? [branchEnd, { x: branchEnd.x + step * 0.65, y: branchEnd.y }, mergeTarget]
+      : [];
 
     paths.push({
       id: branch.name,
       branchName: branch.name,
       color: branch.accent,
-      d,
+      d: pathThrough(pathPoints),
       active,
       muted,
       severity: branch.severity,
+    });
+
+    if (mergePoints.length > 0) {
+      paths.push({
+        id: `${branch.name}-merge`,
+        branchName: branch.name,
+        color: branch.accent,
+        d: pathThrough(mergePoints),
+        active,
+        muted,
+        isMerge: true,
+        severity: branch.severity,
+      });
+    }
+
+    labels.push({
+      id: branch.name,
+      branchName: branch.name,
+      x: Math.min(graphWidth - 168, branchEnd.x + 16),
+      y: clamp(branchEnd.y + (branchEnd.y < centerY ? -52 : 24), padding.top, graphHeight - padding.bottom + 14),
+      color: branch.accent,
+      status: branch.status,
+      ahead: branch.divergence?.ahead || 0,
+      behind: branch.divergence?.behind || 0,
+      health: branch.health_score,
+      isDefault: false,
     });
 
     heatZones.push({
@@ -152,5 +209,6 @@ export function layoutTopology({ branches, graphsByBranch, repository, selectedB
     paths,
     nodes,
     heatZones,
+    labels,
   };
 }
