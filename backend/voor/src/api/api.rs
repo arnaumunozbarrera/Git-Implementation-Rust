@@ -153,7 +153,8 @@ pub async fn api() {
         "api",
         "healthy",
         "running",
-        &format!("Server listening on {}", addr),
+        &format!("Server listening succesfully"),
+        // &format!("Server listening on {}", addr),
     );
     monitor.update_service(
         "frontend",
