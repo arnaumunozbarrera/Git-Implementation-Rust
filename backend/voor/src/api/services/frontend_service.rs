@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use base64::Engine;
@@ -8,11 +8,12 @@ use sqlx::Row;
 use crate::api::clients::supabase::SupabaseClient;
 use crate::api::models::{
     ActivityFeedItem, AnalyticsOverviewResponse, CommitGraphNode, CommitGraphResponse,
-    CommitSummary, ContentEntry, ContentsResponse, FileContentResponse, PaginationResponse,
-    ReadmePreview, RepoDashboardResponse, Repository, RepositoryFileSummary, UserSummary,
+    BranchCommitDistributionItem, CommitSummary, ContentEntry, ContentsResponse, FileContentResponse,
+    PaginationResponse, ReadmePreview, RepoDashboardResponse, Repository, RepositoryFileSummary,
+    RepositoryStorageSummary, UserSummary, VcsAnalyticsResponse, VcsBranchAnalytics,
+    VcsTimelineBucket, VcsTopologyCacheItem,
 };
 use crate::utils::object_store::{self, ObjectType};
-use crate::utils::sync;
 
 const DEFAULT_LIMIT: usize = 25;
 const MAX_LIMIT: usize = 100;
@@ -24,18 +25,27 @@ pub async fn get_repo_dashboard(
 ) -> Result<RepoDashboardResponse, String> {
     ensure_local_repo(repo_id)?;
     let repo = load_repository(client, repo_id).await?;
-    let branch_count: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM branches WHERE repo_id = $1")
-            .bind(repo_id)
-            .fetch_one(&client.pool)
-            .await
-            .map_err(|error| format!("[ERROR] Failed to count branches for '{}': {}", repo_id, error))?;
+    let branch_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM branches WHERE repo_id = $1")
+        .bind(repo_id)
+        .fetch_one(&client.pool)
+        .await
+        .map_err(|error| {
+            format!(
+                "[ERROR] Failed to count branches for '{}': {}",
+                repo_id, error
+            )
+        })?;
     let commit_count: i64 =
         sqlx::query_scalar("SELECT COUNT(*) FROM commits_metadata WHERE repo_id = $1")
             .bind(repo_id)
             .fetch_one(&client.pool)
             .await
-            .map_err(|error| format!("[ERROR] Failed to count commits for '{}': {}", repo_id, error))?;
+            .map_err(|error| {
+                format!(
+                    "[ERROR] Failed to count commits for '{}': {}",
+                    repo_id, error
+                )
+            })?;
 
     let latest_commit = match resolve_ref_head(client, repo_id, None).await? {
         Some((_, head)) => load_commit_summary(client, repo_id, &head).await?,
@@ -53,7 +63,12 @@ pub async fn get_repo_dashboard(
     .bind(repo_id)
     .fetch_one(&client.pool)
     .await
-    .map_err(|error| format!("[ERROR] Failed to load activity summary for '{}': {}", repo_id, error))?;
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to load activity summary for '{}': {}",
+            repo_id, error
+        )
+    })?;
 
     let push_count = activity_row.get::<i64, _>("push_count");
     let pull_count = activity_row.get::<i64, _>("pull_count");
@@ -62,7 +77,12 @@ pub async fn get_repo_dashboard(
             .bind(repo_id)
             .fetch_one(&client.pool)
             .await
-            .map_err(|error| format!("[ERROR] Failed to count commit events for '{}': {}", repo_id, error))?;
+            .map_err(|error| {
+                format!(
+                    "[ERROR] Failed to count commit events for '{}': {}",
+                    repo_id, error
+                )
+            })?;
 
     let starred_by_me: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM stars WHERE repo_id = $1 AND user_id = $2)",
@@ -71,7 +91,12 @@ pub async fn get_repo_dashboard(
     .bind(user_id)
     .fetch_one(&client.pool)
     .await
-    .map_err(|error| format!("[ERROR] Failed to load star state for '{}': {}", repo_id, error))?;
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to load star state for '{}': {}",
+            repo_id, error
+        )
+    })?;
 
     let file_summary = match resolve_ref_head(client, repo_id, None).await? {
         Some((_, head)) => summarize_commit_tree(&head)?,
@@ -137,7 +162,7 @@ pub async fn get_commit_history(
             c.hash,
             c.parent_hash,
             c.message,
-            c.created_at,
+            c.created_at::text AS created_at,
             COALESCE(cm.additions, 0) AS additions,
             COALESCE(cm.deletions, 0) AS deletions,
             u.id AS author_id,
@@ -156,12 +181,53 @@ pub async fn get_commit_history(
     .bind(offset as i64)
     .fetch_all(&client.pool)
     .await
-    .map_err(|error| format!("[ERROR] Failed to load commit history for '{}': {}", repo_id, error))?;
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to load commit history for '{}': {}",
+            repo_id, error
+        )
+    })?;
 
     let mut items: Vec<CommitSummary> = rows
         .into_iter()
         .map(map_commit_summary_row)
         .collect::<Result<Vec<_>, _>>()?;
+
+    if items.is_empty() {
+        let fallback_rows = sqlx::query(
+            "SELECT
+                cm.commit_hash AS hash,
+                NULL::text AS parent_hash,
+                cm.message,
+                cm.created_at::text AS created_at,
+                COALESCE(cm.additions, 0) AS additions,
+                COALESCE(cm.deletions, 0) AS deletions,
+                u.id AS author_id,
+                u.username,
+                u.email
+             FROM commits_metadata cm
+             LEFT JOIN users u ON u.id = cm.author_id
+             WHERE cm.repo_id = $1
+             ORDER BY cm.created_at DESC, cm.commit_hash DESC
+             LIMIT $2 OFFSET $3",
+        )
+        .bind(repo_id)
+        .bind((limit + 1) as i64)
+        .bind(offset as i64)
+        .fetch_all(&client.pool)
+        .await
+        .map_err(|error| {
+            format!(
+                "[ERROR] Failed to load commit metadata history for '{}': {}",
+                repo_id, error
+            )
+        })?;
+
+        items = fallback_rows
+            .into_iter()
+            .map(map_commit_summary_row)
+            .collect::<Result<Vec<_>, _>>()?;
+    }
 
     let next_offset = if items.len() > limit {
         items.pop();
@@ -191,21 +257,34 @@ pub async fn get_commit_graph(
 
     let branches_by_head = load_branches_by_head(client, repo_id).await?;
     let rows = sqlx::query(
-        "WITH RECURSIVE commit_chain AS (
-            SELECT c.hash, c.parent_hash, 0 AS depth
+        "WITH RECURSIVE commit_chain(hash, depth) AS (
+            SELECT $2::text AS hash, 0 AS depth
+            UNION
+            SELECT ce.parent_hash, chain.depth + 1
+            FROM commit_edges ce
+            JOIN commit_chain chain ON ce.child_hash = chain.hash
+            WHERE ce.repo_id = $1 AND chain.depth + 1 < $3
+            UNION
+            SELECT c.parent_hash, chain.depth + 1
             FROM commits c
-            WHERE c.hash = $2
-            UNION ALL
-            SELECT parent.hash, parent.parent_hash, child.depth + 1
-            FROM commits parent
-            JOIN commit_chain child ON parent.hash = child.parent_hash
-            WHERE child.depth + 1 < $3
+            JOIN commit_chain chain ON c.hash = chain.hash
+            WHERE c.parent_hash IS NOT NULL AND chain.depth + 1 < $3
          )
          SELECT DISTINCT
             c.hash,
-            c.parent_hash,
+            COALESCE(
+                (
+                    SELECT array_agg(ce.parent_hash ORDER BY ce.parent_index)
+                    FROM commit_edges ce
+                    WHERE ce.repo_id = $1 AND ce.child_hash = c.hash
+                ),
+                CASE
+                    WHEN c.parent_hash IS NULL THEN ARRAY[]::text[]
+                    ELSE ARRAY[c.parent_hash]
+                END
+            ) AS parent_hashes,
             c.message,
-            c.created_at,
+            c.created_at::text AS created_at,
             u.id AS author_id,
             u.username,
             u.email
@@ -219,15 +298,19 @@ pub async fn get_commit_graph(
     .bind(limit as i64)
     .fetch_all(&client.pool)
     .await
-    .map_err(|error| format!("[ERROR] Failed to load commit graph for '{}': {}", repo_id, error))?;
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to load commit graph for '{}': {}",
+            repo_id, error
+        )
+    })?;
 
     let mut nodes = Vec::with_capacity(rows.len());
     for row in rows {
         let hash = row.get::<String, _>("hash");
-        let parent_hash = row.get::<Option<String>, _>("parent_hash");
         nodes.push(CommitGraphNode {
             hash: hash.clone(),
-            parent_hashes: parent_hash.into_iter().collect(),
+            parent_hashes: row.get::<Vec<String>, _>("parent_hashes"),
             message: row.get::<String, _>("message"),
             created_at: row.get::<String, _>("created_at"),
             author: UserSummary {
@@ -291,7 +374,10 @@ pub async fn get_repo_file(
     ensure_local_repo(repo_id)?;
     let normalized_path = normalize_repo_path(path);
     let Some((resolved_ref, head)) = resolve_ref_head(client, repo_id, ref_name).await? else {
-        return Err(format!("[ERROR] Repository '{}' has no commits yet", repo_id));
+        return Err(format!(
+            "[ERROR] Repository '{}' has no commits yet",
+            repo_id
+        ));
     };
 
     let (blob_hash, content) = read_blob_at_path(&head, &normalized_path)?;
@@ -321,7 +407,7 @@ pub async fn get_activity_feed(
     ensure_local_repo(repo_id)?;
     let limit_with_buffer = limit + offset + 1;
     let logs = sqlx::query(
-        "SELECT l.action, l.metadata, l.created_at, u.id AS actor_id, u.username, u.email
+        "SELECT l.action, l.metadata, l.created_at::text AS created_at, u.id AS actor_id, u.username, u.email
          FROM repo_access_logs l
          JOIN users u ON u.id = l.user_id
          WHERE l.repo_id = $1
@@ -335,7 +421,7 @@ pub async fn get_activity_feed(
     .map_err(|error| format!("[ERROR] Failed to load activity logs for '{}': {}", repo_id, error))?;
 
     let commits = sqlx::query(
-        "SELECT cm.commit_hash, cm.message, cm.additions, cm.deletions, cm.created_at,
+        "SELECT cm.commit_hash, cm.message, cm.additions, cm.deletions, cm.created_at::text AS created_at,
                 u.id AS actor_id, u.username, u.email
          FROM commits_metadata cm
          JOIN users u ON u.id = cm.author_id
@@ -430,6 +516,9 @@ pub async fn get_analytics_overview(
     .await
     .map_err(|error| format!("[ERROR] Failed to load analytics for '{}': {}", repo_id, error))?;
 
+    let storage_summary = summarize_repository_storage(client, repo_id).await?;
+    let branch_commit_distribution = summarize_branch_commit_distribution(client, repo_id).await?;
+
     Ok(AnalyticsOverviewResponse {
         repo_id: repo_id.to_string(),
         branches_count: row.get::<i64, _>("branches_count"),
@@ -440,6 +529,214 @@ pub async fn get_analytics_overview(
         last_push_at: row.get::<Option<String>, _>("last_push_at"),
         last_pull_at: row.get::<Option<String>, _>("last_pull_at"),
         contributors_count: row.get::<i64, _>("contributors_count"),
+        repository_size_bytes: storage_summary.bytes,
+        object_count: storage_summary.objects,
+        branch_commit_distribution,
+    })
+}
+
+pub async fn get_vcs_analytics(
+    client: &SupabaseClient,
+    repo_id: &str,
+) -> Result<VcsAnalyticsResponse, String> {
+    ensure_local_repo(repo_id)?;
+    let repo = load_repository(client, repo_id).await?;
+
+    let branch_rows = sqlx::query(
+        "SELECT
+            b.id::text AS branch_id,
+            b.name,
+            b.last_commit_hash,
+            b.created_at::text AS created_at,
+            b.last_activity_at::text AS last_activity_at,
+            b.last_analyzed_at::text AS last_analyzed_at,
+            COALESCE(b.is_default_cached, false) OR b.name = r.default_branch AS is_default,
+            COALESCE(bm.default_branch_name, r.default_branch) AS default_branch_name,
+            COALESCE(bm.head_commit_hash, b.last_commit_hash) AS head_commit_hash,
+            bm.default_head_hash,
+            bm.merge_base_hash,
+            COALESCE(bm.ahead_count, 0)::bigint AS ahead_count,
+            COALESCE(bm.behind_count, 0)::bigint AS behind_count,
+            COALESCE(bm.divergence_distance, 0)::bigint AS divergence_distance,
+            bm.freshness_status,
+            bm.freshness_score::double precision AS freshness_score,
+            bm.health_score::double precision AS health_score,
+            COALESCE(bm.stale_days, 0)::int AS stale_days,
+            bm.computed_at::text AS computed_at,
+            btm.lane_index,
+            btm.lane_color,
+            btm.start_commit_hash,
+            btm.head_commit_hash AS topology_head_commit_hash,
+            btm.merge_base_hash AS topology_merge_base_hash,
+            btm.first_seen_at::text AS first_seen_at,
+            btm.last_seen_at::text AS last_seen_at,
+            btm.commit_density::double precision AS commit_density,
+            btm.activity_heat::double precision AS activity_heat,
+            c.hash AS latest_hash,
+            COALESCE(
+                (
+                    SELECT array_agg(ce.parent_hash ORDER BY ce.parent_index)
+                    FROM commit_edges ce
+                    WHERE ce.repo_id = b.repo_id AND ce.child_hash = c.hash
+                ),
+                CASE
+                    WHEN c.parent_hash IS NULL THEN ARRAY[]::text[]
+                    ELSE ARRAY[c.parent_hash]
+                END
+            ) AS latest_parent_hashes,
+            c.message AS latest_message,
+            c.created_at::text AS latest_created_at,
+            u.id AS latest_author_id,
+            u.username AS latest_username,
+            u.email AS latest_email
+         FROM branches b
+         JOIN repositories r ON r.id = b.repo_id
+         LEFT JOIN branch_metrics bm ON bm.repo_id = b.repo_id AND bm.branch_name = b.name
+         LEFT JOIN branch_topology_metrics btm ON btm.repo_id = b.repo_id AND btm.branch_name = b.name
+         LEFT JOIN commits c ON c.hash = COALESCE(bm.head_commit_hash, b.last_commit_hash)
+         LEFT JOIN users u ON u.id = c.author_id
+         WHERE b.repo_id = $1
+         ORDER BY
+            CASE WHEN b.name = r.default_branch THEN 0 ELSE 1 END,
+            COALESCE(btm.lane_index, 999),
+            COALESCE(bm.divergence_distance, 0) DESC,
+            b.name ASC",
+    )
+    .bind(repo_id)
+    .fetch_all(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to load VCS branch analytics for '{}': {}", repo_id, error))?;
+
+    let branches = branch_rows
+        .into_iter()
+        .map(|row| {
+            let latest_hash = row.get::<Option<String>, _>("latest_hash");
+            let latest_commit = latest_hash.map(|hash| CommitGraphNode {
+                hash,
+                parent_hashes: row.get::<Vec<String>, _>("latest_parent_hashes"),
+                message: row
+                    .get::<Option<String>, _>("latest_message")
+                    .unwrap_or_default(),
+                created_at: row
+                    .get::<Option<String>, _>("latest_created_at")
+                    .unwrap_or_default(),
+                author: UserSummary {
+                    id: row
+                        .get::<Option<String>, _>("latest_author_id")
+                        .unwrap_or_default(),
+                    username: row.get::<Option<String>, _>("latest_username"),
+                    email: row.get::<Option<String>, _>("latest_email"),
+                },
+                branches: vec![row.get::<String, _>("name")],
+            });
+
+            VcsBranchAnalytics {
+                id: row.get::<Option<String>, _>("branch_id"),
+                name: row.get::<String, _>("name"),
+                last_commit_hash: row.get::<Option<String>, _>("last_commit_hash"),
+                created_at: row.get::<String, _>("created_at"),
+                last_activity_at: row.get::<Option<String>, _>("last_activity_at"),
+                last_analyzed_at: row.get::<Option<String>, _>("last_analyzed_at"),
+                is_default: row.get::<bool, _>("is_default"),
+                default_branch_name: row.get::<String, _>("default_branch_name"),
+                head_commit_hash: row.get::<Option<String>, _>("head_commit_hash"),
+                default_head_hash: row.get::<Option<String>, _>("default_head_hash"),
+                merge_base_hash: row
+                    .get::<Option<String>, _>("merge_base_hash")
+                    .or_else(|| row.get::<Option<String>, _>("topology_merge_base_hash")),
+                ahead_count: row.get::<i64, _>("ahead_count"),
+                behind_count: row.get::<i64, _>("behind_count"),
+                divergence_distance: row.get::<i64, _>("divergence_distance"),
+                freshness_status: row.get::<Option<String>, _>("freshness_status"),
+                freshness_score: row.get::<Option<f64>, _>("freshness_score"),
+                health_score: row.get::<Option<f64>, _>("health_score"),
+                stale_days: row.get::<i32, _>("stale_days"),
+                computed_at: row.get::<Option<String>, _>("computed_at"),
+                lane_index: row.get::<Option<i32>, _>("lane_index"),
+                lane_color: row.get::<Option<String>, _>("lane_color"),
+                start_commit_hash: row.get::<Option<String>, _>("start_commit_hash"),
+                first_seen_at: row.get::<Option<String>, _>("first_seen_at"),
+                last_seen_at: row.get::<Option<String>, _>("last_seen_at"),
+                commit_density: row.get::<Option<f64>, _>("commit_density"),
+                activity_heat: row.get::<Option<f64>, _>("activity_heat"),
+                latest_commit,
+            }
+        })
+        .collect();
+
+    let topology_rows = sqlx::query(
+        "SELECT
+            branch_name,
+            head_commit_hash,
+            layout_version,
+            COALESCE(nodes, '[]'::jsonb) AS nodes,
+            COALESCE(edges, '[]'::jsonb) AS edges,
+            COALESCE(lanes, '[]'::jsonb) AS lanes,
+            COALESCE(clusters, '[]'::jsonb) AS clusters,
+            computed_at::text AS computed_at
+         FROM commit_topology_cache
+         WHERE repo_id = $1
+         ORDER BY computed_at DESC",
+    )
+    .bind(repo_id)
+    .fetch_all(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to load topology cache for '{}': {}", repo_id, error))?;
+
+    let topology_cache = topology_rows
+        .into_iter()
+        .map(|row| VcsTopologyCacheItem {
+            branch_name: row.get::<String, _>("branch_name"),
+            head_commit_hash: row.get::<String, _>("head_commit_hash"),
+            layout_version: row.get::<Option<String>, _>("layout_version"),
+            nodes: row.get::<serde_json::Value, _>("nodes"),
+            edges: row.get::<serde_json::Value, _>("edges"),
+            lanes: row.get::<serde_json::Value, _>("lanes"),
+            clusters: row.get::<serde_json::Value, _>("clusters"),
+            computed_at: row.get::<Option<String>, _>("computed_at"),
+        })
+        .collect();
+
+    let timeline_rows = sqlx::query(
+        "SELECT
+            bucket_start::text AS bucket_start,
+            bucket_granularity,
+            COALESCE(commit_count, 0)::bigint AS commit_count,
+            COALESCE(author_count, 0)::bigint AS author_count,
+            COALESCE(branch_count, 0)::bigint AS branch_count,
+            COALESCE(additions, 0)::bigint AS additions,
+            COALESCE(deletions, 0)::bigint AS deletions,
+            COALESCE(audit_event_count, 0)::bigint AS audit_event_count
+         FROM timeline_aggregation
+         WHERE repo_id = $1
+         ORDER BY bucket_start DESC
+         LIMIT 64",
+    )
+    .bind(repo_id)
+    .fetch_all(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to load VCS timeline for '{}': {}", repo_id, error))?;
+
+    let timeline = timeline_rows
+        .into_iter()
+        .map(|row| VcsTimelineBucket {
+            bucket_start: row.get::<String, _>("bucket_start"),
+            bucket_granularity: row.get::<String, _>("bucket_granularity"),
+            commit_count: row.get::<i64, _>("commit_count"),
+            author_count: row.get::<i64, _>("author_count"),
+            branch_count: row.get::<i64, _>("branch_count"),
+            additions: row.get::<i64, _>("additions"),
+            deletions: row.get::<i64, _>("deletions"),
+            audit_event_count: row.get::<i64, _>("audit_event_count"),
+        })
+        .collect();
+
+    Ok(VcsAnalyticsResponse {
+        repo_id: repo_id.to_string(),
+        default_branch: repo.default_branch,
+        branches,
+        topology_cache,
+        timeline,
     })
 }
 
@@ -449,7 +746,10 @@ pub fn normalize_limit(value: Option<usize>) -> usize {
 
 fn normalize_repo_path(path: &str) -> String {
     let trimmed = path.trim().replace('\\', "/");
-    trimmed.trim_start_matches('/').trim_start_matches("./").to_string()
+    trimmed
+        .trim_start_matches('/')
+        .trim_start_matches("./")
+        .to_string()
 }
 
 fn map_commit_summary_row(row: sqlx::postgres::PgRow) -> Result<CommitSummary, String> {
@@ -471,12 +771,17 @@ fn map_commit_summary_row(row: sqlx::postgres::PgRow) -> Result<CommitSummary, S
 }
 
 async fn load_repository(client: &SupabaseClient, repo_id: &str) -> Result<Repository, String> {
-    sqlx::query_as::<_, Repository>("SELECT * FROM repositories WHERE id = $1")
-        .bind(repo_id)
-        .fetch_optional(&client.pool)
-        .await
-        .map_err(|error| format!("[ERROR] Failed to load repository '{}': {}", repo_id, error))?
-        .ok_or_else(|| format!("[ERROR] Repository '{}' not found", repo_id))
+    sqlx::query_as::<_, Repository>(
+        "SELECT id, name, owner_id, is_private, description, tags, default_branch,
+                stars_count, readme_path, theme, created_at::text AS created_at
+         FROM repositories
+         WHERE id = $1",
+    )
+    .bind(repo_id)
+    .fetch_optional(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to load repository '{}': {}", repo_id, error))?
+    .ok_or_else(|| format!("[ERROR] Repository '{}' not found", repo_id))
 }
 
 async fn resolve_ref_head(
@@ -524,7 +829,7 @@ async fn load_commit_summary(
             c.hash,
             c.parent_hash,
             c.message,
-            c.created_at,
+            c.created_at::text AS created_at,
             COALESCE(cm.additions, 0) AS additions,
             COALESCE(cm.deletions, 0) AS deletions,
             u.id AS author_id,
@@ -539,7 +844,12 @@ async fn load_commit_summary(
     .bind(commit_hash)
     .fetch_optional(&client.pool)
     .await
-    .map_err(|error| format!("[ERROR] Failed to load commit '{}' for '{}': {}", commit_hash, repo_id, error))?;
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to load commit '{}' for '{}': {}",
+            commit_hash, repo_id, error
+        )
+    })?;
 
     row.map(map_commit_summary_row).transpose()
 }
@@ -552,7 +862,12 @@ async fn load_branches_by_head(
         .bind(repo_id)
         .fetch_all(&client.pool)
         .await
-        .map_err(|error| format!("[ERROR] Failed to load branches for '{}': {}", repo_id, error))?;
+        .map_err(|error| {
+            format!(
+                "[ERROR] Failed to load branches for '{}': {}",
+                repo_id, error
+            )
+        })?;
 
     let mut map = HashMap::new();
     for row in rows {
@@ -566,13 +881,8 @@ async fn load_branches_by_head(
 }
 
 fn ensure_local_repo(repo_id: &str) -> Result<(), String> {
-    let expected_repo = sync::repo_id_from_cwd()?;
-    if repo_id.trim() != expected_repo {
-        return Err(format!(
-            "[ERROR] Unknown repo '{}', expected '{}'",
-            repo_id.trim(),
-            expected_repo
-        ));
+    if repo_id.trim().is_empty() {
+        return Err("[ERROR] Missing repo_id".to_string());
     }
     Ok(())
 }
@@ -593,7 +903,120 @@ fn summarize_commit_tree(commit_hash: &str) -> Result<RepositoryFileSummary, Str
     Ok(RepositoryFileSummary { files, directories })
 }
 
-fn count_tree_entries(tree_hash: &str, files: &mut usize, directories: &mut usize) -> Result<(), String> {
+async fn summarize_repository_storage(
+    client: &SupabaseClient,
+    repo_id: &str,
+) -> Result<RepositoryStorageSummary, String> {
+    let heads = sqlx::query_scalar::<_, String>(
+        "SELECT DISTINCT last_commit_hash FROM branches WHERE repo_id = $1 AND last_commit_hash IS NOT NULL",
+    )
+    .bind(repo_id)
+    .fetch_all(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to load branch heads for '{}': {}", repo_id, error))?;
+
+    let mut seen = HashSet::new();
+    let mut summary = RepositoryStorageSummary {
+        bytes: 0,
+        objects: 0,
+    };
+
+    for head in heads {
+        add_reachable_object_size(&head, &mut seen, &mut summary)?;
+    }
+
+    Ok(summary)
+}
+
+async fn summarize_branch_commit_distribution(
+    client: &SupabaseClient,
+    repo_id: &str,
+) -> Result<Vec<BranchCommitDistributionItem>, String> {
+    let rows = sqlx::query(
+        "WITH RECURSIVE branch_chain AS (
+            SELECT b.name AS branch, c.hash, c.parent_hash
+            FROM branches b
+            JOIN commits c ON c.hash = b.last_commit_hash
+            WHERE b.repo_id = $1 AND b.last_commit_hash IS NOT NULL
+            UNION ALL
+            SELECT chain.branch, parent.hash, parent.parent_hash
+            FROM commits parent
+            JOIN branch_chain chain ON parent.hash = chain.parent_hash
+         )
+         SELECT branch, COUNT(DISTINCT hash)::bigint AS total_count
+         FROM branch_chain
+         GROUP BY branch
+         ORDER BY total_count DESC, branch ASC",
+    )
+    .bind(repo_id)
+    .fetch_all(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to summarize branch commits for '{}': {}", repo_id, error))?;
+
+    let total_commits: i64 = rows
+        .iter()
+        .map(|row| row.get::<i64, _>("total_count"))
+        .sum();
+
+    if total_commits == 0 {
+        return Ok(Vec::new());
+    }
+
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let total_count = row.get::<i64, _>("total_count");
+            BranchCommitDistributionItem {
+                branch: row.get::<String, _>("branch"),
+                total_count,
+                percentage: ((total_count as f64 / total_commits as f64) * 1000.0).round() / 10.0,
+            }
+        })
+        .collect())
+}
+
+fn add_reachable_object_size(
+    hash: &str,
+    seen: &mut HashSet<String>,
+    summary: &mut RepositoryStorageSummary,
+) -> Result<(), String> {
+    let trimmed = hash.trim();
+    if trimmed.is_empty() || !seen.insert(trimmed.to_string()) {
+        return Ok(());
+    }
+
+    let parsed = object_store::read_object(trimmed)?;
+    summary.bytes += parsed.full_bytes.len();
+    summary.objects += 1;
+
+    match parsed.object_type {
+        ObjectType::Blob => {}
+        ObjectType::Tree => {
+            for entry in object_store::parse_tree(&parsed.content)? {
+                add_reachable_object_size(&entry.hash, seen, summary)?;
+            }
+        }
+        ObjectType::Commit => {
+            let commit_text = String::from_utf8(parsed.content)
+                .map_err(|error| format!("[ERROR] Invalid commit content: {}", error))?;
+            for line in commit_text.lines() {
+                if let Some(tree_hash) = line.strip_prefix("tree ") {
+                    add_reachable_object_size(tree_hash, seen, summary)?;
+                } else if let Some(parent_hash) = line.strip_prefix("parent ") {
+                    add_reachable_object_size(parent_hash, seen, summary)?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn count_tree_entries(
+    tree_hash: &str,
+    files: &mut usize,
+    directories: &mut usize,
+) -> Result<(), String> {
     let tree = object_store::read_object(tree_hash)?;
     for entry in object_store::parse_tree(&tree.content)? {
         match entry.object_type {

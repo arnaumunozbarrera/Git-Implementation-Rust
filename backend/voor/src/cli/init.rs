@@ -3,6 +3,8 @@ use std::path::Path;
 
 use crate::utils::fs_ops;
 
+const DEFAULT_REMOTE_URL: &str = "http://localhost:3000";
+
 pub fn init_command() {
     let result = fs_ops::with_repo_lock("init", || ensure_repo_layout());
 
@@ -41,7 +43,7 @@ fn ensure_repo_layout() -> Result<InitStatus, String> {
     repaired |= ensure_file(".voor/refs/heads/master", b"")?;
     repaired |= ensure_file(".voor/HEAD", b"ref: refs/heads/master")?;
     repaired |= ensure_file(".voor/index", b"")?;
-    repaired |= ensure_file(".voor/config", b"[remote \"origin\"]\nurl = http://localhost:3000\n")?;
+    repaired |= ensure_default_remote_config()?;
     repaired |= ensure_file(".voorignore", b".env\n\n.voor/\n/.voor/\n\nCargo.lock\nCargo.toml")?;
 
     if !repo_exists {
@@ -60,4 +62,47 @@ fn ensure_file(path: &str, content: &[u8]) -> Result<bool, String> {
 
     fs_ops::write_file_atomic(path, content)?;
     Ok(true)
+}
+
+fn ensure_default_remote_config() -> Result<bool, String> {
+    let path = ".voor/config";
+    if !Path::new(path).exists() {
+        fs_ops::write_file_atomic(
+            path,
+            format!("[remote \"origin\"]\nurl = {}\n", DEFAULT_REMOTE_URL).as_bytes(),
+        )?;
+        return Ok(true);
+    }
+
+    let content = fs::read_to_string(path)
+        .map_err(|error| format!("[ERROR] Unable to read '{}': {}", path, error))?;
+    let mut changed = false;
+    let mut saw_url = false;
+    let mut lines = Vec::new();
+
+    for line in content.lines() {
+        if line.trim_start().starts_with("url = ") {
+            saw_url = true;
+            let replacement = format!("url = {}", DEFAULT_REMOTE_URL);
+            if line.trim() != replacement {
+                changed = true;
+            }
+            lines.push(replacement);
+        } else {
+            lines.push(line.to_string());
+        }
+    }
+
+    if !saw_url {
+        lines.insert(1.min(lines.len()), format!("url = {}", DEFAULT_REMOTE_URL));
+        changed = true;
+    }
+
+    if changed {
+        let mut normalized = lines.join("\n");
+        normalized.push('\n');
+        fs_ops::write_file_atomic(path, normalized.as_bytes())?;
+    }
+
+    Ok(changed)
 }

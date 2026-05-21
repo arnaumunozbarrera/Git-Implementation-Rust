@@ -127,13 +127,8 @@ struct DatabaseSyncOutcome {
 }
 
 fn validate_repo_and_branch(repo_id: &str, branch: &str, head: &str) -> Result<(), String> {
-    let expected_repo = sync::repo_id_from_cwd()?;
-    if repo_id.trim() != expected_repo {
-        return Err(format!(
-            "[ERROR] Unknown repo '{}', expected '{}'",
-            repo_id.trim(),
-            expected_repo
-        ));
+    if repo_id.trim().is_empty() {
+        return Err("[ERROR] Missing repo_id".to_string());
     }
 
     if branch.trim().is_empty() {
@@ -163,7 +158,7 @@ async fn sync_objects_to_database(
         });
     };
 
-    ensure_repo_exists(client, repo_id).await?;
+    ensure_repo_owner(client, repo_id, user_id).await?;
     ensure_user_exists(client, user_id).await?;
 
     let mut parsed_objects = Vec::with_capacity(objects.len());
@@ -200,6 +195,7 @@ async fn sync_objects_to_database(
             let commit_data = parse_commit_content(&parsed.content)?;
             ensure_tree_exists(client, &commit_data.tree_hash).await?;
             upsert_commit(client, hash, &commit_data, user_id).await?;
+            upsert_commit_edges(client, repo_id, hash, &commit_data.parent_hashes).await?;
             let (additions, deletions) = calculate_commit_metrics(&commit_data, &object_cache)?;
             upsert_commit_metadata(
                 client,
@@ -216,6 +212,7 @@ async fn sync_objects_to_database(
     }
 
     let branch_status = upsert_branch(client, repo_id, branch, head).await?;
+    refresh_repository_vcs_metrics(client, repo_id).await?;
     let log_status = if log_push_action {
         log_sync_action(
             Some(client),
@@ -253,16 +250,28 @@ async fn sync_objects_to_database(
     })
 }
 
-async fn ensure_repo_exists(client: &SupabaseClient, repo_id: &str) -> Result<(), String> {
-    let repo_exists: bool =
-        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM repositories WHERE id = $1)")
-            .bind(repo_id)
-            .fetch_one(&client.pool)
-            .await
-            .map_err(|error| format!("[ERROR] Failed to verify repository '{}': {}", repo_id, error))?;
+async fn ensure_repo_owner(
+    client: &SupabaseClient,
+    repo_id: &str,
+    user_id: &str,
+) -> Result<(), String> {
+    let owner_id: Option<String> = sqlx::query_scalar(
+        "SELECT owner_id FROM repositories WHERE id = $1",
+    )
+    .bind(repo_id)
+    .fetch_optional(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to verify repository '{}': {}", repo_id, error))?;
 
-    if !repo_exists {
+    let Some(owner_id) = owner_id else {
         return Err(format!("[ERROR] Repository '{}' not found", repo_id));
+    };
+
+    if owner_id != user_id {
+        return Err(format!(
+            "[ERROR] User '{}' cannot sync repository '{}'",
+            user_id, repo_id
+        ));
     }
 
     Ok(())
@@ -374,12 +383,48 @@ async fn upsert_commit(
     )
     .bind(hash)
     .bind(&commit.tree_hash)
-    .bind(commit.parent_hash.as_deref())
+    .bind(commit.parent_hashes.first().map(String::as_str))
     .bind(user_id)
     .bind(&commit.message)
     .execute(&client.pool)
     .await
     .map_err(|error| format!("[ERROR] Failed to store commit '{}': {}", hash, error))?;
+
+    Ok(())
+}
+
+async fn upsert_commit_edges(
+    client: &SupabaseClient,
+    repo_id: &str,
+    child_hash: &str,
+    parent_hashes: &[String],
+) -> Result<(), String> {
+    for (index, parent_hash) in parent_hashes.iter().enumerate() {
+        if parent_hash.trim().is_empty() {
+            continue;
+        }
+
+        let edge_type = if index == 0 { "parent" } else { "merge" };
+        sqlx::query(
+            "INSERT INTO commit_edges (repo_id, child_hash, parent_hash, parent_index, edge_type)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (repo_id, child_hash, parent_hash)
+             DO UPDATE SET parent_index = EXCLUDED.parent_index, edge_type = EXCLUDED.edge_type",
+        )
+        .bind(repo_id)
+        .bind(child_hash)
+        .bind(parent_hash)
+        .bind(index as i32)
+        .bind(edge_type)
+        .execute(&client.pool)
+        .await
+        .map_err(|error| {
+            format!(
+                "[ERROR] Failed to store commit edge '{} -> {}': {}",
+                child_hash, parent_hash, error
+            )
+        })?;
+    }
 
     Ok(())
 }
@@ -449,9 +494,17 @@ async fn upsert_branch(
         let branch_id: Uuid = row.get(0);
         let previous_head: Option<String> = row.get(1);
 
-        sqlx::query("UPDATE branches SET last_commit_hash = $1 WHERE id = $2")
+        sqlx::query(
+            "UPDATE branches
+             SET last_commit_hash = $1,
+                 last_activity_at = now(),
+                 last_analyzed_at = now(),
+                 is_default_cached = name = (SELECT default_branch FROM repositories WHERE id = $3)
+             WHERE id = $2",
+        )
             .bind(head)
             .bind(branch_id)
+            .bind(repo_id)
             .execute(&client.pool)
             .await
             .map_err(|error| format!("[ERROR] Failed to update branch '{}': {}", branch_name, error))?;
@@ -470,7 +523,8 @@ async fn upsert_branch(
     }
 
     sqlx::query(
-        "INSERT INTO branches (repo_id, name, last_commit_hash) VALUES ($1, $2, $3)",
+        "INSERT INTO branches (repo_id, name, last_commit_hash, last_activity_at, last_analyzed_at, is_default_cached)
+         VALUES ($1, $2, $3, now(), now(), $2 = (SELECT default_branch FROM repositories WHERE id = $1))",
     )
     .bind(repo_id)
     .bind(branch_name)
@@ -480,6 +534,215 @@ async fn upsert_branch(
     .map_err(|error| format!("[ERROR] Failed to create branch '{}': {}", branch_name, error))?;
 
     Ok(Some(format!("Created branch '{}' at {}", branch_name, head)))
+}
+
+async fn refresh_repository_vcs_metrics(
+    client: &SupabaseClient,
+    repo_id: &str,
+) -> Result<(), String> {
+    sqlx::query(
+        "WITH RECURSIVE
+            repo AS (
+                SELECT id, default_branch FROM repositories WHERE id = $1
+            ),
+            default_head AS (
+                SELECT b.last_commit_hash AS hash
+                FROM branches b
+                JOIN repo r ON r.id = b.repo_id AND r.default_branch = b.name
+                WHERE b.last_commit_hash IS NOT NULL
+            ),
+            branch_heads AS (
+                SELECT b.id, b.repo_id, b.name, b.last_commit_hash
+                FROM branches b
+                WHERE b.repo_id = $1 AND b.last_commit_hash IS NOT NULL
+            ),
+            default_ancestors(hash, depth) AS (
+                SELECT hash, 0 FROM default_head
+                UNION
+                SELECT COALESCE(ce.parent_hash, c.parent_hash), da.depth + 1
+                FROM default_ancestors da
+                JOIN commits c ON c.hash = da.hash
+                LEFT JOIN commit_edges ce ON ce.repo_id = $1 AND ce.child_hash = c.hash
+                WHERE COALESCE(ce.parent_hash, c.parent_hash) IS NOT NULL
+            ),
+            branch_ancestors(branch_id, branch_name, hash, depth) AS (
+                SELECT id, name, last_commit_hash, 0 FROM branch_heads
+                UNION
+                SELECT ba.branch_id, ba.branch_name, COALESCE(ce.parent_hash, c.parent_hash), ba.depth + 1
+                FROM branch_ancestors ba
+                JOIN commits c ON c.hash = ba.hash
+                LEFT JOIN commit_edges ce ON ce.repo_id = $1 AND ce.child_hash = c.hash
+                WHERE COALESCE(ce.parent_hash, c.parent_hash) IS NOT NULL
+            ),
+            merge_bases AS (
+                SELECT DISTINCT ON (ba.branch_id)
+                    ba.branch_id,
+                    ba.branch_name,
+                    ba.hash AS merge_base_hash,
+                    ba.depth AS ahead_count,
+                    da.depth AS behind_count
+                FROM branch_ancestors ba
+                JOIN default_ancestors da ON da.hash = ba.hash
+                ORDER BY ba.branch_id, (ba.depth + da.depth), ba.depth
+            )
+         INSERT INTO branch_metrics (
+            repo_id,
+            branch_id,
+            branch_name,
+            default_branch_name,
+            head_commit_hash,
+            default_head_hash,
+            merge_base_hash,
+            ahead_count,
+            behind_count,
+            divergence_distance,
+            freshness_status,
+            freshness_score,
+            health_score,
+            stale_days,
+            computed_at
+         )
+         SELECT
+            b.repo_id,
+            b.id,
+            b.name,
+            r.default_branch,
+            b.last_commit_hash,
+            dh.hash,
+            mb.merge_base_hash,
+            CASE WHEN b.name = r.default_branch THEN 0 ELSE COALESCE(mb.ahead_count, 0) END,
+            CASE WHEN b.name = r.default_branch THEN 0 ELSE COALESCE(mb.behind_count, 0) END,
+            CASE WHEN b.name = r.default_branch THEN 0 ELSE COALESCE(mb.ahead_count, 0) + COALESCE(mb.behind_count, 0) END,
+            CASE
+                WHEN b.name = r.default_branch THEN 'default'
+                WHEN EXTRACT(day FROM now() - COALESCE(b.last_activity_at, c.created_at, b.created_at)) < 15 THEN 'active'
+                WHEN EXTRACT(day FROM now() - COALESCE(b.last_activity_at, c.created_at, b.created_at)) <= 30 THEN 'idle'
+                ELSE 'outdated'
+            END,
+            GREATEST(0, 100 - EXTRACT(day FROM now() - COALESCE(b.last_activity_at, c.created_at, b.created_at)))::numeric,
+            GREATEST(
+                0,
+                100
+                - (CASE WHEN b.name = r.default_branch THEN 0 ELSE COALESCE(mb.ahead_count, 0) + COALESCE(mb.behind_count, 0) END * 3)
+                - EXTRACT(day FROM now() - COALESCE(b.last_activity_at, c.created_at, b.created_at))
+            )::numeric,
+            GREATEST(0, FLOOR(EXTRACT(epoch FROM now() - COALESCE(b.last_activity_at, c.created_at, b.created_at)) / 86400))::int,
+            now()
+         FROM branches b
+         JOIN repositories r ON r.id = b.repo_id
+         LEFT JOIN commits c ON c.hash = b.last_commit_hash
+         LEFT JOIN default_head dh ON true
+         LEFT JOIN merge_bases mb ON mb.branch_id = b.id
+         WHERE b.repo_id = $1
+         ON CONFLICT (repo_id, branch_name)
+         DO UPDATE SET
+            branch_id = EXCLUDED.branch_id,
+            default_branch_name = EXCLUDED.default_branch_name,
+            head_commit_hash = EXCLUDED.head_commit_hash,
+            default_head_hash = EXCLUDED.default_head_hash,
+            merge_base_hash = EXCLUDED.merge_base_hash,
+            ahead_count = EXCLUDED.ahead_count,
+            behind_count = EXCLUDED.behind_count,
+            divergence_distance = EXCLUDED.divergence_distance,
+            freshness_status = EXCLUDED.freshness_status,
+            freshness_score = EXCLUDED.freshness_score,
+            health_score = EXCLUDED.health_score,
+            stale_days = EXCLUDED.stale_days,
+            computed_at = EXCLUDED.computed_at",
+    )
+    .bind(repo_id)
+    .execute(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to refresh branch metrics for '{}': {}", repo_id, error))?;
+
+    sqlx::query(
+        "INSERT INTO branch_topology_metrics (
+            repo_id,
+            branch_name,
+            lane_index,
+            lane_color,
+            start_commit_hash,
+            head_commit_hash,
+            merge_base_hash,
+            first_seen_at,
+            last_seen_at,
+            commit_density,
+            activity_heat
+         )
+         SELECT
+            bm.repo_id,
+            bm.branch_name,
+            ROW_NUMBER() OVER (
+                PARTITION BY bm.repo_id
+                ORDER BY CASE WHEN bm.branch_name = bm.default_branch_name THEN 0 ELSE 1 END,
+                         bm.divergence_distance DESC,
+                         bm.branch_name ASC
+            )::int - 1,
+            NULL,
+            bm.merge_base_hash,
+            bm.head_commit_hash,
+            bm.merge_base_hash,
+            MIN(c.created_at),
+            MAX(c.created_at),
+            COUNT(DISTINCT c.hash)::numeric,
+            LEAST(0.16, GREATEST(0.04, COUNT(DISTINCT c.hash)::numeric / 100.0))
+         FROM branch_metrics bm
+         LEFT JOIN commits c ON c.hash = bm.head_commit_hash OR c.hash = bm.merge_base_hash
+         WHERE bm.repo_id = $1
+         GROUP BY bm.repo_id, bm.branch_name, bm.default_branch_name, bm.divergence_distance, bm.merge_base_hash, bm.head_commit_hash
+         ON CONFLICT (repo_id, branch_name)
+         DO UPDATE SET
+            lane_index = EXCLUDED.lane_index,
+            start_commit_hash = EXCLUDED.start_commit_hash,
+            head_commit_hash = EXCLUDED.head_commit_hash,
+            merge_base_hash = EXCLUDED.merge_base_hash,
+            first_seen_at = EXCLUDED.first_seen_at,
+            last_seen_at = EXCLUDED.last_seen_at,
+            commit_density = EXCLUDED.commit_density,
+            activity_heat = EXCLUDED.activity_heat",
+    )
+    .bind(repo_id)
+    .execute(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to refresh topology metrics for '{}': {}", repo_id, error))?;
+
+    sqlx::query(
+        "INSERT INTO timeline_aggregation (
+            repo_id,
+            bucket_start,
+            bucket_granularity,
+            commit_count,
+            author_count,
+            branch_count,
+            additions,
+            deletions,
+            audit_event_count
+         )
+         SELECT
+            $1,
+            date_trunc('day', now()),
+            'day',
+            (SELECT COUNT(*) FROM commits_metadata WHERE repo_id = $1 AND created_at >= date_trunc('day', now())),
+            (SELECT COUNT(DISTINCT author_id) FROM commits_metadata WHERE repo_id = $1 AND created_at >= date_trunc('day', now())),
+            (SELECT COUNT(*) FROM branches WHERE repo_id = $1),
+            (SELECT COALESCE(SUM(additions), 0) FROM commits_metadata WHERE repo_id = $1 AND created_at >= date_trunc('day', now())),
+            (SELECT COALESCE(SUM(deletions), 0) FROM commits_metadata WHERE repo_id = $1 AND created_at >= date_trunc('day', now())),
+            (SELECT COUNT(*) FROM repo_access_logs WHERE repo_id = $1 AND created_at >= date_trunc('day', now()))
+         ON CONFLICT (repo_id, bucket_start, bucket_granularity)
+         DO UPDATE SET
+            commit_count = EXCLUDED.commit_count,
+            author_count = EXCLUDED.author_count,
+            branch_count = EXCLUDED.branch_count,
+            additions = EXCLUDED.additions,
+            deletions = EXCLUDED.deletions,
+            audit_event_count = EXCLUDED.audit_event_count",
+    )
+    .bind(repo_id)
+    .execute(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to refresh timeline aggregation for '{}': {}", repo_id, error))?;
+
+    Ok(())
 }
 
 async fn log_sync_action(
@@ -550,7 +813,7 @@ async fn log_sync_action(
 #[derive(Debug, Clone)]
 struct ParsedCommit {
     tree_hash: String,
-    parent_hash: Option<String>,
+    parent_hashes: Vec<String>,
     _author: String,
     message: String,
 }
@@ -559,7 +822,7 @@ fn parse_commit_content(content: &[u8]) -> Result<ParsedCommit, String> {
     let commit_text = String::from_utf8(content.to_vec())
         .map_err(|error| format!("[ERROR] Invalid commit content: {}", error))?;
     let mut tree_hash = None;
-    let mut parent_hash = None;
+    let mut parent_hashes = Vec::new();
     let mut author = None;
     let mut message_lines = Vec::new();
     let mut in_message = false;
@@ -578,7 +841,7 @@ fn parse_commit_content(content: &[u8]) -> Result<ParsedCommit, String> {
         if let Some(value) = line.strip_prefix("tree ") {
             tree_hash = Some(value.trim().to_string());
         } else if let Some(value) = line.strip_prefix("parent ") {
-            parent_hash = Some(value.trim().to_string());
+            parent_hashes.push(value.trim().to_string());
         } else if let Some(value) = line.strip_prefix("author ") {
             author = Some(value.trim().to_string());
         }
@@ -586,7 +849,7 @@ fn parse_commit_content(content: &[u8]) -> Result<ParsedCommit, String> {
 
     Ok(ParsedCommit {
         tree_hash: tree_hash.ok_or_else(|| "[ERROR] Commit missing tree hash".to_string())?,
-        parent_hash,
+        parent_hashes,
         _author: author.unwrap_or_default(),
         message: message_lines.join("\n").trim().to_string(),
     })
@@ -597,7 +860,7 @@ fn calculate_commit_metrics(
     cache: &HashMap<String, ParsedObject>,
 ) -> Result<(i64, i64), String> {
     let current_files = collect_tree_files(&commit.tree_hash, cache)?;
-    let parent_files = match commit.parent_hash.as_deref() {
+    let parent_files = match commit.parent_hashes.first().map(String::as_str) {
         Some(parent_hash) if !parent_hash.trim().is_empty() => {
             let parent_commit = load_object(parent_hash, cache)?;
             let parent_data = parse_commit_content(&parent_commit.content)?;

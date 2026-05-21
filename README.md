@@ -23,23 +23,6 @@ The current delivery now behaves more like a real installable tool:
 
 ---
 
-## Download & Install
-
-For the executable download flow, use:
-
-- [docs/download.md](/abs/path/C:/dev/Git-Implementation-Rust/docs/download.md)
-- [docs/executable-validation.md](/abs/path/C:/dev/Git-Implementation-Rust/docs/executable-validation.md)
-
-The intended end-user flow is:
-
-1. Download the correct ZIP asset from GitHub Releases
-2. Extract `voor` or `voor.exe`
-3. Move it to a directory on `PATH`
-4. Run `voor --version`
-5. Use `voor init`, `voor login`, `voor push`, `voor pull`, and `voor serve`
-
----
-
 ## Objectives
 - OB0 - **Development of a version control software:** understand how distributed coordination systems manage local and remote state across shared workspaces while exploring a tailored alternative for personal use cases.
 - OB1 - **Develop a functional system:** provide a working version-control workflow for local and remote collaborative environments.

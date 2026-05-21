@@ -1,8 +1,10 @@
 use axum::{
-    extract::Request,
-    middleware,
-    routing::{get, post},
     Router,
+    extract::Request,
+    http::{HeaderValue, Method, StatusCode},
+    middleware,
+    response::Response,
+    routing::{delete, get, post},
 };
 use dotenvy::dotenv;
 use std::env;
@@ -13,12 +15,14 @@ use crate::api::auth::{self, AuthConfig};
 use crate::api::clients::supabase::SupabaseClient;
 use crate::api::routes::frontend_routes::{
     get_activity_feed, get_analytics_overview, get_commit_graph, get_commit_history,
-    get_repo_contents, get_repo_dashboard, get_repo_file,
+    get_repo_contents, get_repo_dashboard, get_repo_file, get_vcs_analytics,
 };
 use crate::api::routes::health_routes::get_health;
-use crate::api::routes::repo_routes::{get_repos, init_repo};
+use crate::api::routes::repo_routes::{
+    clone_repo_to_desktop, delete_repo, get_branches, get_repos, init_repo,
+};
 use crate::api::routes::sync_routes::{pull_branch, push_branch, sync_db};
-use crate::api::routes::user_routes::get_users;
+use crate::api::routes::user_routes::{delete_account, get_users, update_account_profile};
 use crate::utils::service_monitor::{LogLevel, ServiceMonitor};
 
 #[derive(Clone)]
@@ -69,7 +73,12 @@ pub async fn api() {
 
     let auth = match auth::AuthConfig::from_env().await {
         Ok(Some(config)) => {
-            monitor.log(LogLevel::Info, "api", "auth-config", "Clerk auth configured");
+            monitor.log(
+                LogLevel::Info,
+                "api",
+                "auth-config",
+                "Clerk auth configured",
+            );
             Some(config)
         }
         Ok(None) => {
@@ -100,7 +109,12 @@ pub async fn api() {
     let protected = Router::new()
         .route("/repos", get(get_repos))
         .route("/repos/init", post(init_repo))
+        .route("/repos/:repo_id", delete(delete_repo))
+        .route("/repos/:repo_id/clone-desktop", post(clone_repo_to_desktop))
+        .route("/repos/:repo_id/branches", get(get_branches))
         .route("/users", get(get_users))
+        .route("/account/profile", post(update_account_profile))
+        .route("/account", delete(delete_account))
         .route("/push", post(push_branch))
         .route("/pull", post(pull_branch))
         .route("/sync-db", post(sync_db))
@@ -110,12 +124,23 @@ pub async fn api() {
         .route("/repos/:repo_id/contents", get(get_repo_contents))
         .route("/repos/:repo_id/files", get(get_repo_file))
         .route("/repos/:repo_id/activity", get(get_activity_feed))
-        .route("/repos/:repo_id/analytics/overview", get(get_analytics_overview))
-        .route_layer(middleware::from_fn_with_state(state.clone(), auth::require_auth));
+        .route(
+            "/repos/:repo_id/analytics/overview",
+            get(get_analytics_overview),
+        )
+        .route(
+            "/repos/:repo_id/analytics/vcs",
+            get(get_vcs_analytics),
+        )
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::require_auth,
+        ));
 
     let app = Router::new()
         .route("/health", get(get_health))
         .merge(protected)
+        .layer(middleware::from_fn(add_cors_headers))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             track_api_requests,
@@ -124,7 +149,12 @@ pub async fn api() {
 
     let port = env::var("PORT").unwrap_or("3000".to_string());
     let addr = SocketAddr::from(([127, 0, 0, 1], port.parse().unwrap()));
-    monitor.update_service("api", "healthy", "running", &format!("Server listening on {}", addr));
+    monitor.update_service(
+        "api",
+        "healthy",
+        "running",
+        &format!("Server listening on {}", addr),
+    );
     monitor.update_service(
         "frontend",
         "healthy",
@@ -133,8 +163,51 @@ pub async fn api() {
     );
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    monitor.log(LogLevel::Info, "backend", "service-ready", "All service monitors attached");
+    monitor.log(
+        LogLevel::Info,
+        "backend",
+        "service-ready",
+        "All service monitors attached",
+    );
     axum::serve(listener, app).await.unwrap();
+}
+
+async fn add_cors_headers(request: Request, next: middleware::Next) -> Response {
+    if request.method() == Method::OPTIONS {
+        let mut response = Response::new(axum::body::Body::empty());
+        *response.status_mut() = StatusCode::NO_CONTENT;
+        insert_cors_headers(response.headers_mut());
+        return response;
+    }
+
+    let mut response = next.run(request).await;
+    insert_cors_headers(response.headers_mut());
+    response
+}
+
+fn insert_cors_headers(headers: &mut axum::http::HeaderMap) {
+    headers.insert(
+        axum::http::header::ACCESS_CONTROL_ALLOW_ORIGIN,
+        HeaderValue::from_static("*"),
+    );
+    headers.insert(
+        axum::http::header::ACCESS_CONTROL_ALLOW_METHODS,
+        HeaderValue::from_static("GET, POST, DELETE, OPTIONS"),
+    );
+    headers.insert(
+        axum::http::header::ACCESS_CONTROL_ALLOW_HEADERS,
+        HeaderValue::from_static("authorization, content-type, accept"),
+    );
+    headers.insert(
+        axum::http::header::ACCESS_CONTROL_MAX_AGE,
+        HeaderValue::from_static("86400"),
+    );
+    headers.insert(
+        axum::http::header::VARY,
+        HeaderValue::from_static(
+            "origin, access-control-request-method, access-control-request-headers",
+        ),
+    );
 }
 
 async fn track_api_requests(
@@ -168,7 +241,13 @@ async fn track_api_requests(
         level,
         "api",
         "request-finish",
-        &format!("{} {} -> {} ({} ms)", method, path, status.as_u16(), elapsed_ms),
+        &format!(
+            "{} {} -> {} ({} ms)",
+            method,
+            path,
+            status.as_u16(),
+            elapsed_ms
+        ),
     );
 
     response

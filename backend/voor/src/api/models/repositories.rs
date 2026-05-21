@@ -1,6 +1,6 @@
+use crate::utils::sync::EncodedObject;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use crate::utils::sync::EncodedObject;
 
 #[derive(Debug, Serialize, Deserialize, FromRow)]
 pub struct Repository {
@@ -36,5 +36,22 @@ pub struct InitRepoRequest {
 pub struct InitRepoResponse {
     pub message: String,
     pub repo_id: String,
+    pub database_action: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CloneRepoRequest {
+    pub default_branch: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CloneRepoResponse {
+    pub message: String,
+    pub path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DeleteActionResponse {
+    pub message: String,
     pub database_action: Option<String>,
 }

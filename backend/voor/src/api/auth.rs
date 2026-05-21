@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axum::body::Body;
 use axum::extract::State;
-use axum::http::{header::AUTHORIZATION, HeaderMap, Request, StatusCode};
+use axum::http::{header::AUTHORIZATION, HeaderMap, Method, Request, StatusCode};
 use axum::middleware::Next;
 use axum::response::Response;
 use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
@@ -150,6 +150,12 @@ pub async fn require_auth(
     mut request: Request<Body>,
     next: Next,
 ) -> Result<Response, (StatusCode, String)> {
+    if request.method() == Method::OPTIONS {
+        let mut response = Response::new(Body::empty());
+        *response.status_mut() = StatusCode::NO_CONTENT;
+        return Ok(response);
+    }
+
     let Some(auth) = state.auth.as_ref() else {
         state.monitor.log(
             LogLevel::Warn,

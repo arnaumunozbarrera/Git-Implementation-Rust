@@ -8,3 +8,9 @@ pub struct User {
     pub email: Option<String>,
     pub created_at: String,
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct UpdateUserProfileRequest {
+    pub username: Option<String>,
+    pub email: Option<String>,
+}

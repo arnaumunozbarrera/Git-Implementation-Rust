@@ -70,6 +70,12 @@ pub struct RepositoryFileSummary {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct RepositoryStorageSummary {
+    pub bytes: usize,
+    pub objects: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ReadmePreview {
     pub path: String,
     pub blob_hash: String,
@@ -158,4 +164,78 @@ pub struct AnalyticsOverviewResponse {
     pub last_push_at: Option<String>,
     pub last_pull_at: Option<String>,
     pub contributors_count: i64,
+    pub repository_size_bytes: usize,
+    pub object_count: usize,
+    pub branch_commit_distribution: Vec<BranchCommitDistributionItem>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BranchCommitDistributionItem {
+    pub branch: String,
+    pub total_count: i64,
+    pub percentage: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VcsBranchAnalytics {
+    pub id: Option<String>,
+    pub name: String,
+    pub last_commit_hash: Option<String>,
+    pub created_at: String,
+    pub last_activity_at: Option<String>,
+    pub last_analyzed_at: Option<String>,
+    pub is_default: bool,
+    pub default_branch_name: String,
+    pub head_commit_hash: Option<String>,
+    pub default_head_hash: Option<String>,
+    pub merge_base_hash: Option<String>,
+    pub ahead_count: i64,
+    pub behind_count: i64,
+    pub divergence_distance: i64,
+    pub freshness_status: Option<String>,
+    pub freshness_score: Option<f64>,
+    pub health_score: Option<f64>,
+    pub stale_days: i32,
+    pub computed_at: Option<String>,
+    pub lane_index: Option<i32>,
+    pub lane_color: Option<String>,
+    pub start_commit_hash: Option<String>,
+    pub first_seen_at: Option<String>,
+    pub last_seen_at: Option<String>,
+    pub commit_density: Option<f64>,
+    pub activity_heat: Option<f64>,
+    pub latest_commit: Option<CommitGraphNode>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VcsTopologyCacheItem {
+    pub branch_name: String,
+    pub head_commit_hash: String,
+    pub layout_version: Option<String>,
+    pub nodes: serde_json::Value,
+    pub edges: serde_json::Value,
+    pub lanes: serde_json::Value,
+    pub clusters: serde_json::Value,
+    pub computed_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VcsTimelineBucket {
+    pub bucket_start: String,
+    pub bucket_granularity: String,
+    pub commit_count: i64,
+    pub author_count: i64,
+    pub branch_count: i64,
+    pub additions: i64,
+    pub deletions: i64,
+    pub audit_event_count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VcsAnalyticsResponse {
+    pub repo_id: String,
+    pub default_branch: String,
+    pub branches: Vec<VcsBranchAnalytics>,
+    pub topology_cache: Vec<VcsTopologyCacheItem>,
+    pub timeline: Vec<VcsTimelineBucket>,
 }
