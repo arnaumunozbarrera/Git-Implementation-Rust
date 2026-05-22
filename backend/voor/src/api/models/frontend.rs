@@ -204,6 +204,10 @@ pub struct VcsBranchAnalytics {
     pub last_seen_at: Option<String>,
     pub commit_density: Option<f64>,
     pub activity_heat: Option<f64>,
+    pub commit_count: i64,
+    pub activity_score: f64,
+    pub latest_commit_at: Option<String>,
+    pub latest_contributor: Option<String>,
     pub latest_commit: Option<CommitGraphNode>,
 }
 
@@ -217,6 +221,23 @@ pub struct VcsTopologyCacheItem {
     pub lanes: serde_json::Value,
     pub clusters: serde_json::Value,
     pub computed_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct RepositoryDagMetricsResponse {
+    pub commit_dag_complexity: f64,
+    pub dag_complexity_status: String,
+    pub longest_chain_nodes: i64,
+    pub open_pr_count: i64,
+    pub open_pr_delta_24h: i64,
+    pub total_commits: i64,
+    pub avg_divergence: f64,
+    pub stale_ratio: f64,
+    pub merge_velocity_per_week: f64,
+    pub branch_count: i64,
+    pub default_branch_name: Option<String>,
+    pub computed_at: String,
+    pub metadata: serde_json::Value,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -235,6 +256,7 @@ pub struct VcsTimelineBucket {
 pub struct VcsAnalyticsResponse {
     pub repo_id: String,
     pub default_branch: String,
+    pub dag_metrics: Option<RepositoryDagMetricsResponse>,
     pub branches: Vec<VcsBranchAnalytics>,
     pub topology_cache: Vec<VcsTopologyCacheItem>,
     pub timeline: Vec<VcsTimelineBucket>,

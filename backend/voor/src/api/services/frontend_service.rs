@@ -7,11 +7,11 @@ use sqlx::Row;
 
 use crate::api::clients::supabase::SupabaseClient;
 use crate::api::models::{
-    ActivityFeedItem, AnalyticsOverviewResponse, CommitGraphNode, CommitGraphResponse,
-    BranchCommitDistributionItem, CommitSummary, ContentEntry, ContentsResponse, FileContentResponse,
-    PaginationResponse, ReadmePreview, RepoDashboardResponse, Repository, RepositoryFileSummary,
-    RepositoryStorageSummary, UserSummary, VcsAnalyticsResponse, VcsBranchAnalytics,
-    VcsTimelineBucket, VcsTopologyCacheItem,
+    ActivityFeedItem, AnalyticsOverviewResponse, BranchCommitDistributionItem, CommitGraphNode,
+    CommitGraphResponse, CommitSummary, ContentEntry, ContentsResponse, FileContentResponse,
+    PaginationResponse, ReadmePreview, RepoDashboardResponse, Repository,
+    RepositoryDagMetricsResponse, RepositoryFileSummary, RepositoryStorageSummary, UserSummary,
+    VcsAnalyticsResponse, VcsBranchAnalytics, VcsTimelineBucket, VcsTopologyCacheItem,
 };
 use crate::utils::object_store::{self, ObjectType};
 
@@ -572,6 +572,10 @@ pub async fn get_vcs_analytics(
             btm.last_seen_at::text AS last_seen_at,
             btm.commit_density::double precision AS commit_density,
             btm.activity_heat::double precision AS activity_heat,
+            COALESCE(bm.commit_count, btm.commit_count, 0)::bigint AS commit_count,
+            COALESCE(bm.activity_score, 0)::double precision AS activity_score,
+            bm.latest_commit_at::text AS metrics_latest_commit_at,
+            bm.latest_contributor AS metrics_latest_contributor,
             c.hash AS latest_hash,
             COALESCE(
                 (
@@ -659,6 +663,10 @@ pub async fn get_vcs_analytics(
                 last_seen_at: row.get::<Option<String>, _>("last_seen_at"),
                 commit_density: row.get::<Option<f64>, _>("commit_density"),
                 activity_heat: row.get::<Option<f64>, _>("activity_heat"),
+                commit_count: row.get::<i64, _>("commit_count"),
+                activity_score: row.get::<f64, _>("activity_score"),
+                latest_commit_at: row.get::<Option<String>, _>("metrics_latest_commit_at"),
+                latest_contributor: row.get::<Option<String>, _>("metrics_latest_contributor"),
                 latest_commit,
             }
         })
@@ -667,16 +675,78 @@ pub async fn get_vcs_analytics(
     let topology_rows = sqlx::query(
         "SELECT
             branch_name,
-            head_commit_hash,
-            layout_version,
-            COALESCE(nodes, '[]'::jsonb) AS nodes,
-            COALESCE(edges, '[]'::jsonb) AS edges,
-            COALESCE(lanes, '[]'::jsonb) AS lanes,
-            COALESCE(clusters, '[]'::jsonb) AS clusters,
-            computed_at::text AS computed_at
-         FROM commit_topology_cache
+            COALESCE(MAX(head_commit_hash), '') AS head_commit_hash,
+            jsonb_agg(
+                jsonb_build_object(
+                    'hash', commit_hash,
+                    'parent_hashes', COALESCE(parent_hashes, '[]'::jsonb),
+                    'message', COALESCE(message, ''),
+                    'created_at', committed_at,
+                    'author', jsonb_build_object(
+                        'id', COALESCE(author_id, ''),
+                        'username', author_username,
+                        'email', NULL
+                    ),
+                    'branches', jsonb_build_array(branch_name),
+                    'depth_from_head', depth_from_head,
+                    'is_head', is_head,
+                    'is_merge_base', is_merge_base,
+                    'is_default_branch', is_default_branch,
+                    'lane_index', lane_index,
+                    'lane_color', lane_color,
+                    'x_position', x_position,
+                    'y_position', y_position
+                )
+                ORDER BY depth_from_head DESC, committed_at ASC NULLS LAST, commit_hash ASC
+            ) AS nodes,
+            jsonb_agg(
+                jsonb_build_object(
+                    'child_hash', commit_hash,
+                    'parent_hashes', COALESCE(parent_hashes, '[]'::jsonb)
+                )
+                ORDER BY depth_from_head ASC, commit_hash ASC
+            ) FILTER (WHERE parent_hashes IS NOT NULL AND jsonb_array_length(parent_hashes) > 0) AS edges,
+            jsonb_build_array(
+                jsonb_build_object(
+                    'branch_name', branch_name,
+                    'lane_index', MAX(lane_index),
+                    'lane_color', MAX(lane_color)
+                )
+            ) AS lanes,
+            '[]'::jsonb AS clusters,
+            MAX(last_seen_at)::text AS computed_at
+         FROM (
+            SELECT
+                bcm.repo_id,
+                bcm.branch_name,
+                bcm.commit_hash,
+                bcm.depth_from_head,
+                bcm.is_head,
+                bcm.is_merge_base,
+                bcm.is_default_branch,
+                bcm.lane_index,
+                bcm.lane_color,
+                bcm.x_position,
+                bcm.y_position,
+                bcm.message,
+                bcm.author_id,
+                bcm.author_username,
+                bcm.committed_at::text AS committed_at,
+                bcm.last_seen_at,
+                COALESCE(bm.head_commit_hash, b.last_commit_hash) AS head_commit_hash,
+                (
+                    SELECT jsonb_agg(ce.parent_hash ORDER BY ce.parent_index)
+                    FROM commit_edges ce
+                    WHERE ce.repo_id = bcm.repo_id AND ce.child_hash = bcm.commit_hash
+                ) AS parent_hashes
+            FROM branch_commit_memberships bcm
+            JOIN branches b ON b.id = bcm.branch_id
+            LEFT JOIN branch_metrics bm ON bm.repo_id = bcm.repo_id AND bm.branch_name = bcm.branch_name
+            WHERE bcm.repo_id = $1
+         ) branch_nodes
          WHERE repo_id = $1
-         ORDER BY computed_at DESC",
+         GROUP BY branch_name
+         ORDER BY MAX(last_seen_at) DESC NULLS LAST, branch_name ASC",
     )
     .bind(repo_id)
     .fetch_all(&client.pool)
@@ -688,14 +758,59 @@ pub async fn get_vcs_analytics(
         .map(|row| VcsTopologyCacheItem {
             branch_name: row.get::<String, _>("branch_name"),
             head_commit_hash: row.get::<String, _>("head_commit_hash"),
-            layout_version: row.get::<Option<String>, _>("layout_version"),
+            layout_version: Some("branch-commit-memberships-v1".to_string()),
             nodes: row.get::<serde_json::Value, _>("nodes"),
-            edges: row.get::<serde_json::Value, _>("edges"),
+            edges: row
+                .get::<Option<serde_json::Value>, _>("edges")
+                .unwrap_or_else(|| serde_json::json!([])),
             lanes: row.get::<serde_json::Value, _>("lanes"),
             clusters: row.get::<serde_json::Value, _>("clusters"),
             computed_at: row.get::<Option<String>, _>("computed_at"),
         })
         .collect();
+
+    let dag_metrics = sqlx::query(
+        "SELECT
+            commit_dag_complexity::double precision AS commit_dag_complexity,
+            dag_complexity_status,
+            longest_chain_nodes::bigint AS longest_chain_nodes,
+            open_pr_count::bigint AS open_pr_count,
+            open_pr_delta_24h::bigint AS open_pr_delta_24h,
+            total_commits::bigint AS total_commits,
+            avg_divergence::double precision AS avg_divergence,
+            stale_ratio::double precision AS stale_ratio,
+            merge_velocity_per_week::double precision AS merge_velocity_per_week,
+            branch_count::bigint AS branch_count,
+            default_branch_name,
+            computed_at::text AS computed_at,
+            metadata
+         FROM repository_dag_metrics
+         WHERE repo_id = $1",
+    )
+    .bind(repo_id)
+    .fetch_optional(&client.pool)
+    .await
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to load repository DAG metrics for '{}': {}",
+            repo_id, error
+        )
+    })?
+    .map(|row| RepositoryDagMetricsResponse {
+        commit_dag_complexity: row.get::<f64, _>("commit_dag_complexity"),
+        dag_complexity_status: row.get::<String, _>("dag_complexity_status"),
+        longest_chain_nodes: row.get::<i64, _>("longest_chain_nodes"),
+        open_pr_count: row.get::<i64, _>("open_pr_count"),
+        open_pr_delta_24h: row.get::<i64, _>("open_pr_delta_24h"),
+        total_commits: row.get::<i64, _>("total_commits"),
+        avg_divergence: row.get::<f64, _>("avg_divergence"),
+        stale_ratio: row.get::<f64, _>("stale_ratio"),
+        merge_velocity_per_week: row.get::<f64, _>("merge_velocity_per_week"),
+        branch_count: row.get::<i64, _>("branch_count"),
+        default_branch_name: row.get::<Option<String>, _>("default_branch_name"),
+        computed_at: row.get::<String, _>("computed_at"),
+        metadata: row.get::<serde_json::Value, _>("metadata"),
+    });
 
     let timeline_rows = sqlx::query(
         "SELECT
@@ -715,7 +830,12 @@ pub async fn get_vcs_analytics(
     .bind(repo_id)
     .fetch_all(&client.pool)
     .await
-    .map_err(|error| format!("[ERROR] Failed to load VCS timeline for '{}': {}", repo_id, error))?;
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to load VCS timeline for '{}': {}",
+            repo_id, error
+        )
+    })?;
 
     let timeline = timeline_rows
         .into_iter()
@@ -734,6 +854,7 @@ pub async fn get_vcs_analytics(
     Ok(VcsAnalyticsResponse {
         repo_id: repo_id.to_string(),
         default_branch: repo.default_branch,
+        dag_metrics,
         branches,
         topology_cache,
         timeline,
@@ -951,7 +1072,12 @@ async fn summarize_branch_commit_distribution(
     .bind(repo_id)
     .fetch_all(&client.pool)
     .await
-    .map_err(|error| format!("[ERROR] Failed to summarize branch commits for '{}': {}", repo_id, error))?;
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to summarize branch commits for '{}': {}",
+            repo_id, error
+        )
+    })?;
 
     let total_commits: i64 = rows
         .iter()

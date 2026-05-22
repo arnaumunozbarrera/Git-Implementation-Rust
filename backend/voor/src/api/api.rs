@@ -14,8 +14,8 @@ use std::time::Instant;
 use crate::api::auth::{self, AuthConfig};
 use crate::api::clients::supabase::SupabaseClient;
 use crate::api::routes::frontend_routes::{
-    get_activity_feed, get_analytics_overview, get_commit_graph, get_commit_history,
-    get_repo_contents, get_repo_dashboard, get_repo_file, get_vcs_analytics,
+    get_activity_feed, get_analytics_overview, get_branch_analytics, get_commit_graph,
+    get_commit_history, get_repo_contents, get_repo_dashboard, get_repo_file, get_vcs_analytics,
 };
 use crate::api::routes::health_routes::get_health;
 use crate::api::routes::repo_routes::{
@@ -112,6 +112,10 @@ pub async fn api() {
         .route("/repos/:repo_id", delete(delete_repo))
         .route("/repos/:repo_id/clone-desktop", post(clone_repo_to_desktop))
         .route("/repos/:repo_id/branches", get(get_branches))
+        .route(
+            "/repos/:repo_id/branches/analytics",
+            get(get_branch_analytics),
+        )
         .route("/users", get(get_users))
         .route("/account/profile", post(update_account_profile))
         .route("/account", delete(delete_account))
@@ -128,10 +132,7 @@ pub async fn api() {
             "/repos/:repo_id/analytics/overview",
             get(get_analytics_overview),
         )
-        .route(
-            "/repos/:repo_id/analytics/vcs",
-            get(get_vcs_analytics),
-        )
+        .route("/repos/:repo_id/analytics/vcs", get(get_vcs_analytics))
         .route_layer(middleware::from_fn_with_state(
             state.clone(),
             auth::require_auth,

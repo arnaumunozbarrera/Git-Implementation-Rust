@@ -107,7 +107,10 @@ pub async fn get_repo_file(
     ensure_authenticated_user(&state, client, &user).await?;
 
     let Some(path) = query.path.as_deref() else {
-        return Err((StatusCode::BAD_REQUEST, "[ERROR] Missing file path".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "[ERROR] Missing file path".to_string(),
+        ));
     };
 
     frontend_service::get_repo_file(client, &repo_id, query.ref_name.as_deref(), path)
@@ -165,10 +168,25 @@ pub async fn get_vcs_analytics(
         .map_err(classify_error)
 }
 
-fn require_client(state: &AppState) -> Result<&crate::api::clients::supabase::SupabaseClient, (StatusCode, String)> {
+pub async fn get_branch_analytics(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(repo_id): Path<String>,
+) -> Result<Json<VcsAnalyticsResponse>, (StatusCode, String)> {
+    get_vcs_analytics(State(state), Extension(user), Path(repo_id)).await
+}
+
+fn require_client(
+    state: &AppState,
+) -> Result<&crate::api::clients::supabase::SupabaseClient, (StatusCode, String)> {
     state.client.as_ref().ok_or_else(|| {
         let message = "[ERROR] Supabase client not configured".to_string();
-        state.monitor.log(LogLevel::Warn, "backend", "frontend-routes-unavailable", &message);
+        state.monitor.log(
+            LogLevel::Warn,
+            "backend",
+            "frontend-routes-unavailable",
+            &message,
+        );
         (StatusCode::SERVICE_UNAVAILABLE, message)
     })
 }
@@ -181,7 +199,9 @@ async fn ensure_authenticated_user(
     auth::ensure_user_exists(Some(client), user)
         .await
         .map_err(|message| {
-            state.monitor.log(LogLevel::Warn, "backend", "user-sync-failed", &message);
+            state
+                .monitor
+                .log(LogLevel::Warn, "backend", "user-sync-failed", &message);
             (StatusCode::INTERNAL_SERVER_ERROR, message)
         })
 }

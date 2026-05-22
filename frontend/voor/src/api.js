@@ -103,6 +103,10 @@ export async function fetchVcsAnalytics(repoId, getToken) {
   return fetchWithClerkAuth(`/repos/${encodeURIComponent(repoId)}/analytics/vcs`, getToken);
 }
 
+export async function fetchBranchAnalytics(repoId, getToken) {
+  return fetchWithClerkAuth(`/repos/${encodeURIComponent(repoId)}/branches/analytics`, getToken);
+}
+
 export async function fetchActivityFeed(repoId, getToken, limit = 10, action) {
   const params = new URLSearchParams({ limit: String(limit), offset: "0" });
   if (action) {
