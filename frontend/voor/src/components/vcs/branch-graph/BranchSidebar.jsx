@@ -30,9 +30,17 @@ function formatRelativeTime(value) {
   return "recently";
 }
 
-function statusKey(branch) {
+function displayBranchName(branch) {
+  return String(branch?.name || branch?.branchName || branch?.ref || branch?.slug || "branch")
+    .replace(/^refs\/heads\//, "")
+    .trim() || "branch";
+}
+
+function statusKey(branch, defaultBranchName) {
   const status = String(branch.status || "").toLowerCase();
-  if (branch.isDefault || branch.is_default || status === "default") {
+  const name = displayBranchName(branch).toLowerCase();
+  const defaultName = String(defaultBranchName || "").toLowerCase();
+  if (branch.isDefault || branch.is_default || status === "default" || (defaultName && name === defaultName)) {
     return "default";
   }
   if (status === "outdated" || status === "stale") {
@@ -73,7 +81,7 @@ function branchAccent(branch, status) {
   return "#a2c9ff";
 }
 
-export function BranchSidebar({ branches, loading }) {
+export function BranchSidebar({ branches, defaultBranchName, hoveredBranchName, loading, onHover }) {
   const items = Array.isArray(branches) ? branches : [];
 
   return (
@@ -89,19 +97,27 @@ export function BranchSidebar({ branches, loading }) {
         {items.length > 0 ? (
           items.map((branch) => {
             const latestAt = branch.latestCommit?.created_at || branch.latest_commit?.created_at || branch.updated_at || branch.created_at;
-            const status = statusKey(branch);
+            const status = statusKey(branch, defaultBranchName);
             const ahead = branch.divergence?.ahead ?? branch.ahead ?? 0;
             const behind = branch.divergence?.behind ?? branch.behind ?? 0;
+            const name = displayBranchName(branch);
+            const hovered = hoveredBranchName === name;
+            const muted = Boolean(hoveredBranchName && !hovered);
 
             return (
               <article
-                className={`vcs-branch-row severity-${branch.severity || "normal"}`}
-                key={branch.id || branch.name}
+                className={`vcs-branch-row severity-${branch.severity || "normal"} ${hovered ? "hovered" : ""} ${muted ? "muted" : ""}`}
+                key={branch.id || name}
+                onBlur={() => onHover?.(null)}
+                onFocus={() => onHover?.(name)}
+                onMouseEnter={() => onHover?.(name)}
+                onMouseLeave={() => onHover?.(null)}
                 style={{ "--branch-accent": branchAccent(branch, status) }}
+                tabIndex="0"
               >
                 <div className="vcs-branch-row-heading">
                   <span className="material-symbols-outlined" aria-hidden="true">call_split</span>
-                  <strong title={branch.name}>{branch.name}</strong>
+                  <strong title={name}>{name}</strong>
                   <span className={`vcs-status-badge branch-status-${status}`}>{statusLabel(status)}</span>
                 </div>
 

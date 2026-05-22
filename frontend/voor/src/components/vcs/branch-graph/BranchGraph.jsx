@@ -1,13 +1,11 @@
 import { useMemo, useRef, useState } from "react";
 import { useBranchMetrics } from "../../../hooks/useBranchMetrics.js";
-import { useBranchTopology } from "../../../hooks/useBranchTopology.js";
 import { useRepositoryAnalytics } from "../../../hooks/useRepositoryAnalytics.js";
 import { BranchMetrics } from "./BranchMetrics.jsx";
 import { BranchLabel } from "./BranchLabel.jsx";
-import { BranchNode } from "./BranchNode.jsx";
 import { BranchPath } from "./BranchPath.jsx";
 import { BranchSidebar } from "./BranchSidebar.jsx";
-import { BranchTooltip } from "./BranchTooltip.jsx";
+import { BranchLegend } from "./BranchLegend.jsx";
 
 function gradientId(value) {
   return String(value).replace(/[^a-zA-Z0-9_-]/g, "-");
@@ -145,6 +143,363 @@ function repositorySlug(repository) {
     .replace(/^-+|-+$/g, "") || "branch-divergence";
 }
 
+
+const BRANCH_COLOR_PALETTE = [
+  "#58a6ff",
+  "#bc8cff",
+  "#3fb950",
+  "#ff7b72",
+  "#ffa657",
+  "#79c0ff",
+  "#d2a8ff",
+  "#7ee787",
+  "#f2cc60",
+  "#a5d6ff",
+];
+
+function clampNumber(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function branchName(branch) {
+  return String(branch?.name || branch?.branchName || branch?.ref || branch?.slug || "branch")
+    .replace(/^refs\/heads\//, "")
+    .trim() || "branch";
+}
+
+function latestCommit(branch) {
+  return branch?.latestCommit || branch?.latest_commit || branch?.headCommit || branch?.head_commit || null;
+}
+
+function latestCommitDate(branch) {
+  const commit = latestCommit(branch);
+  return commit?.created_at || commit?.createdAt || commit?.committed_at || branch?.updated_at || branch?.created_at || "";
+}
+
+function branchDivergence(branch) {
+  const divergence = branch?.divergence || {};
+  const ahead = firstNumber(
+    divergence.ahead,
+    divergence.commitsAhead,
+    divergence.commits_ahead,
+    branch?.ahead,
+    branch?.aheadBy,
+    branch?.commitsAhead,
+    branch?.commits_ahead,
+    branch?.ahead_count,
+  ) || 0;
+  const behind = firstNumber(
+    divergence.behind,
+    divergence.commitsBehind,
+    divergence.commits_behind,
+    branch?.behind,
+    branch?.behindBy,
+    branch?.commitsBehind,
+    branch?.commits_behind,
+    branch?.behind_count,
+  ) || 0;
+
+  return {
+    ahead: Math.max(0, Math.round(ahead)),
+    behind: Math.max(0, Math.round(behind)),
+  };
+}
+
+function branchStatusKey(branch, isDefault = false) {
+  const status = String(branch?.status || branch?.state || "").toLowerCase();
+
+  if (isDefault || branch?.isDefault || branch?.is_default || status === "default") {
+    return "default";
+  }
+  if (status === "outdated" || status === "stale" || status === "deprecated") {
+    return "outdated";
+  }
+  if (status === "idle" || status === "inactive") {
+    return "idle";
+  }
+
+  return "active";
+}
+
+function branchStatusLabel(status) {
+  if (status === "default") {
+    return "Default";
+  }
+  if (status === "outdated") {
+    return "Stale";
+  }
+  if (status === "idle") {
+    return "Idle";
+  }
+
+  return "Active";
+}
+
+function repositoryDefaultBranchName(repository) {
+  return String(
+    repository?.defaultBranch ||
+    repository?.default_branch ||
+    repository?.mainBranch ||
+    repository?.main_branch ||
+    repository?.primaryBranch ||
+    repository?.primary_branch ||
+    "",
+  ).trim().toLowerCase();
+}
+
+function resolveDefaultBranchIndex(branches, repository) {
+  const items = Array.isArray(branches) ? branches : [];
+  const repoDefault = repositoryDefaultBranchName(repository);
+
+  const explicitIndex = items.findIndex((branch) => {
+    const status = String(branch?.status || branch?.state || "").toLowerCase();
+    return Boolean(branch?.isDefault || branch?.is_default || status === "default");
+  });
+  if (explicitIndex >= 0) {
+    return explicitIndex;
+  }
+
+  if (repoDefault) {
+    const repoDefaultIndex = items.findIndex((branch) => branchName(branch).toLowerCase() === repoDefault);
+    if (repoDefaultIndex >= 0) {
+      return repoDefaultIndex;
+    }
+  }
+
+  const mainIndex = items.findIndex((branch) => branchName(branch).toLowerCase() === "main");
+  if (mainIndex >= 0) {
+    return mainIndex;
+  }
+
+  const masterIndex = items.findIndex((branch) => branchName(branch).toLowerCase() === "master");
+  if (masterIndex >= 0) {
+    return masterIndex;
+  }
+
+  return 0;
+}
+
+function branchColor(branch, branchIndex, isDefault) {
+  if (isDefault) {
+    return "#c0c7d4";
+  }
+
+  const explicitColor = branch?.color || branch?.accent || branch?.branchColor || branch?.branch_color;
+  if (explicitColor) {
+    return explicitColor;
+  }
+
+  return BRANCH_COLOR_PALETTE[Math.abs(branchIndex) % BRANCH_COLOR_PALETTE.length];
+}
+
+function buildTimelineTicks(minUnit, maxUnit, unitToX, height) {
+  const span = Math.max(1, maxUnit - minUnit);
+  const step = span <= 6 ? 1 : span <= 14 ? 2 : span <= 35 ? 5 : span <= 80 ? 10 : span <= 160 ? 20 : span <= 350 ? 50 : 100;
+  const values = new Set([0, minUnit, maxUnit]);
+  const first = Math.ceil(minUnit / step) * step;
+
+  for (let value = first; value <= maxUnit; value += step) {
+    values.add(value);
+  }
+
+  return Array.from(values)
+    .filter((value) => Number.isFinite(value) && value >= minUnit && value <= maxUnit)
+    .sort((a, b) => a - b)
+    .map((value) => {
+      const rounded = Math.round(value);
+      const label = rounded === 0
+        ? "default"
+        : rounded < 0
+          ? `${Math.abs(rounded)} behind`
+          : `${rounded} ahead`;
+
+      return {
+        id: `tick-${rounded}`,
+        x: unitToX(value),
+        y: height - 54,
+        value: rounded,
+        label,
+      };
+    });
+}
+
+function buildDivergenceTopology({ branches, repository, hoveredBranchName }) {
+  const sourceBranches = Array.isArray(branches) ? branches.filter(Boolean) : [];
+
+  if (!sourceBranches.length) {
+    return {
+      paths: [],
+      labels: [],
+      heatZones: [],
+      axisTicks: [],
+      legendItems: [],
+      width: 1040,
+      height: 430,
+      centerY: 215,
+      defaultBranchName: "main",
+    };
+  }
+
+  const defaultIndex = resolveDefaultBranchIndex(sourceBranches, repository);
+  const defaultBranch = sourceBranches[defaultIndex] || sourceBranches[0];
+  const defaultName = branchName(defaultBranch);
+  const normalizedBranches = sourceBranches.map((branch, index) => {
+    const isDefault = index === defaultIndex;
+    const status = branchStatusKey(branch, isDefault);
+    const divergence = branchDivergence(branch);
+
+    return {
+      branch,
+      id: branch?.id || branch?.uuid || branchName(branch),
+      name: branchName(branch),
+      sourceIndex: index,
+      isDefault,
+      status,
+      statusLabel: branchStatusLabel(status),
+      color: branchColor(branch, index, isDefault),
+      ahead: isDefault ? 0 : divergence.ahead,
+      behind: isDefault ? 0 : divergence.behind,
+      health: firstNumber(branch?.health, branch?.score, branch?.stabilityScore),
+      latestAt: latestCommitDate(branch),
+      latestCommit: latestCommit(branch),
+      severity: branch?.severity || (status === "outdated" ? "warning" : "normal"),
+    };
+  });
+
+  const nonDefaultBranches = normalizedBranches.filter((branch) => !branch.isDefault);
+  const topLaneCount = Math.ceil(nonDefaultBranches.length / 2);
+  const bottomLaneCount = Math.floor(nonDefaultBranches.length / 2);
+  const laneSpacing = 72;
+  const topPadding = 86;
+  const bottomPadding = 116;
+  const neededHeight = topPadding + bottomPadding + (topLaneCount + bottomLaneCount) * laneSpacing;
+  const height = Math.max(430, neededHeight);
+  const centerY = nonDefaultBranches.length > 0 ? topPadding + topLaneCount * laneSpacing : Math.round(height / 2);
+
+  const timelineUnits = nonDefaultBranches.flatMap((branch) => [
+    -branch.behind,
+    branch.ahead - branch.behind,
+  ]);
+  const minUnit = Math.min(-1, 0, ...timelineUnits);
+  const maxUnit = Math.max(1, 0, ...timelineUnits);
+  const unitSpan = Math.max(1, maxUnit - minUnit);
+  const width = Math.max(1040, Math.min(1800, 720 + unitSpan * 48));
+  const leftPadding = 96;
+  const rightPadding = 130;
+  const plotWidth = Math.max(320, width - leftPadding - rightPadding);
+  const unitToX = (unit) => leftPadding + ((unit - minUnit) / unitSpan) * plotWidth;
+  const timelineStartX = unitToX(minUnit);
+  const timelineEndX = unitToX(maxUnit);
+  const defaultHeadX = unitToX(0);
+  const activeBranchName = hoveredBranchName || "";
+  const isPathMuted = (name) => Boolean(activeBranchName && activeBranchName !== name);
+  const defaultLegendBranch = normalizedBranches.find((branch) => branch.isDefault);
+  const paths = [];
+  const labels = [];
+
+  paths.push({
+    id: `path-${defaultName}`,
+    branchName: defaultName,
+    status: "default",
+    statusLabel: "Default",
+    severity: "normal",
+    color: defaultLegendBranch?.color || "#c0c7d4",
+    d: `M ${timelineStartX} ${centerY} L ${timelineEndX} ${centerY}`,
+    isDefault: true,
+    ahead: 0,
+    behind: 0,
+    active: !activeBranchName || activeBranchName === defaultName,
+    muted: isPathMuted(defaultName),
+  });
+
+  labels.push({
+    id: `label-${defaultName}`,
+    branchName: defaultName,
+    status: "default",
+    statusLabel: "Default",
+    color: defaultLegendBranch?.color || "#c0c7d4",
+    isDefault: true,
+    ahead: 0,
+    behind: 0,
+    x: clampNumber(defaultHeadX + 16, 16, width - 160),
+    y: clampNumber(centerY - 34, 18, height - 46),
+  });
+
+  nonDefaultBranches.forEach((branch, index) => {
+    const direction = index % 2 === 0 ? -1 : 1;
+    const laneMagnitude = Math.floor(index / 2) + 1;
+    const laneY = centerY + direction * laneMagnitude * laneSpacing;
+    const forkUnit = -branch.behind;
+    const headUnit = branch.ahead - branch.behind;
+    const forkX = unitToX(forkUnit);
+    const headX = unitToX(headUnit);
+    const horizontalDistance = Math.abs(headX - forkX);
+    const horizontalDirection = headX >= forkX ? 1 : -1;
+    const bendX = horizontalDistance < 2
+      ? forkX
+      : forkX + horizontalDirection * clampNumber(horizontalDistance * 0.36, 28, 58);
+    const pathD = horizontalDistance < 2
+      ? `M ${forkX} ${centerY} C ${forkX} ${centerY + direction * 28} ${forkX} ${laneY - direction * 22} ${forkX} ${laneY}`
+      : `M ${forkX} ${centerY} C ${forkX} ${centerY + direction * 28} ${bendX} ${laneY - direction * 22} ${bendX} ${laneY} L ${headX} ${laneY}`;
+    paths.push({
+      id: `path-${branch.name}`,
+      branchName: branch.name,
+      status: branch.status,
+      statusLabel: branch.statusLabel,
+      severity: branch.severity,
+      color: branch.color,
+      d: pathD,
+      isDefault: false,
+      isFork: true,
+      ahead: branch.ahead,
+      behind: branch.behind,
+      active: !activeBranchName || activeBranchName === branch.name,
+      muted: isPathMuted(branch.name),
+    });
+
+    labels.push({
+      id: `label-${branch.name}`,
+      branchName: branch.name,
+      status: branch.status,
+      statusLabel: branch.statusLabel,
+      color: branch.color,
+      isDefault: false,
+      ahead: branch.ahead,
+      behind: branch.behind,
+      health: branch.health,
+      x: clampNumber(headX + 14, 16, width - 190),
+      y: clampNumber(laneY - 10, 22, height - 46),
+    });
+  });
+
+  return {
+    paths,
+    labels,
+    heatZones: [],
+    axisTicks: buildTimelineTicks(minUnit, maxUnit, unitToX, height),
+    legendItems: normalizedBranches
+      .slice()
+      .sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.sourceIndex - b.sourceIndex)
+      .map((branch) => ({
+        id: branch.id,
+        branchName: branch.name,
+        status: branch.status,
+        statusLabel: branch.statusLabel,
+        color: branch.color,
+        isDefault: branch.isDefault,
+        ahead: branch.ahead,
+        behind: branch.behind,
+        latestAt: branch.latestAt,
+        active: !activeBranchName || activeBranchName === branch.name,
+        muted: isPathMuted(branch.name),
+      })),
+    width,
+    height,
+    centerY,
+    defaultBranchName: defaultName,
+  };
+}
+
 function RecentDagModifications({ events }) {
   if (!events.length) {
     return null;
@@ -171,7 +526,7 @@ function RecentDagModifications({ events }) {
 }
 
 export function BranchGraph({ getToken, repository }) {
-  const [hoveredCommit, setHoveredCommit] = useState(null);
+  const [hoveredBranchName, setHoveredBranchName] = useState(null);
   const graphPanelRef = useRef(null);
   const graphStageRef = useRef(null);
 
@@ -183,25 +538,22 @@ export function BranchGraph({ getToken, repository }) {
 
   const data = analyticsState.data || {};
   const branches = Array.isArray(data.branches) ? data.branches : [];
-  const topology = useBranchTopology({
-    branches,
-    graphsByBranch: data.graphsByBranch || {},
-    hoveredBranchName: "",
-    repository,
-    selectedBranchName: "",
-  });
+  const topology = useMemo(
+    () => buildDivergenceTopology({ branches, repository, hoveredBranchName }),
+    [branches, repository, hoveredBranchName],
+  );
   const metrics = useBranchMetrics({ analytics: data.analytics, branches });
   const loading = analyticsState.status === "loading";
 
   const paths = Array.isArray(topology.paths) ? topology.paths : [];
-  const nodes = Array.isArray(topology.nodes) ? topology.nodes : [];
   const labels = Array.isArray(topology.labels) ? topology.labels : [];
   const heatZones = Array.isArray(topology.heatZones) ? topology.heatZones : [];
   const axisTicks = Array.isArray(topology.axisTicks) ? topology.axisTicks : [];
+  const legendItems = Array.isArray(topology.legendItems) ? topology.legendItems : [];
   const topologyWidth = firstNumber(topology.width) || 1040;
   const topologyHeight = firstNumber(topology.height) || 430;
   const centerY = firstNumber(topology.centerY) || topologyHeight / 2;
-  const hasTopology = branches.length > 0 && (paths.length > 0 || nodes.length > 0);
+  const hasTopology = branches.length > 0 && paths.length > 0;
 
   const analytics = data.analytics || {};
   const totalCommits = firstNumber(
@@ -225,7 +577,7 @@ export function BranchGraph({ getToken, repository }) {
     data.pullRequests?.length,
   );
   const derivedComplexity = branches.length > 0
-    ? Math.min(0.99, Math.max(0.1, (paths.length + branches.length) / Math.max(8, nodes.length + branches.length)))
+    ? Math.min(0.99, Math.max(0.1, (paths.length + branches.length) / Math.max(8, labels.length + branches.length)))
     : 0;
   const dagComplexity = normalizeComplexity(
     analytics.dagComplexity || analytics.dag_complexity || analytics.commitDagComplexity || analytics.commit_dag_complexity,
@@ -314,7 +666,7 @@ export function BranchGraph({ getToken, repository }) {
       </div>
 
       <div className="vcs-observability-layout">
-        <BranchSidebar branches={branches} loading={loading} />
+        <BranchSidebar branches={branches} defaultBranchName={topology.defaultBranchName} hoveredBranchName={hoveredBranchName} loading={loading} onHover={setHoveredBranchName} />
 
         <section className="vcs-graph-panel" ref={graphPanelRef}>
           <header className="vcs-panel-header">
@@ -343,13 +695,6 @@ export function BranchGraph({ getToken, repository }) {
                       <path d="M 72 0 L 0 0 0 72" fill="none" stroke="rgba(139,145,157,0.10)" strokeWidth="1" />
                       <path d="M 0 36 L 72 36 M 36 0 L 36 72" fill="none" stroke="rgba(139,145,157,0.045)" strokeWidth="1" />
                     </pattern>
-                    <filter id="branch-node-glow" x="-80%" y="-80%" width="260%" height="260%">
-                      <feGaussianBlur stdDeviation="4" result="blur" />
-                      <feMerge>
-                        <feMergeNode in="blur" />
-                        <feMergeNode in="SourceGraphic" />
-                      </feMerge>
-                    </filter>
                     {paths.map((path) => (
                       <linearGradient id={`gradient-${gradientId(path.id)}`} key={path.id} x1="0%" x2="100%" y1="0%" y2="0%">
                         <stop offset="0%" stopColor="rgba(139,145,157,0.58)" />
@@ -385,27 +730,20 @@ export function BranchGraph({ getToken, repository }) {
                   </g>
                   <g className="graph-paths">
                     {paths.map((path) => (
-                      <BranchPath key={path.id} path={path} />
-                    ))}
-                  </g>
-                  <g className="graph-nodes">
-                    {nodes.map((node) => (
-                      <BranchNode
-                        active
-                        hovered={hoveredCommit?.hash === node.hash}
-                        key={node.hash || `${node.x}-${node.y}`}
-                        node={node}
-                        onHover={setHoveredCommit}
-                      />
+                      <BranchPath key={path.id} onHover={setHoveredBranchName} path={path} />
                     ))}
                   </g>
                   <g className="branch-label-layer">
                     {labels.map((label) => (
-                      <BranchLabel key={label.id || label.branchName} label={label} />
+                      <BranchLabel
+                        hovered={hoveredBranchName === label.branchName}
+                        key={label.id || label.branchName}
+                        label={label}
+                        onHover={setHoveredBranchName}
+                      />
                     ))}
                   </g>
                 </svg>
-                <BranchTooltip node={hoveredCommit} width={topologyWidth} height={topologyHeight} />
               </>
             ) : (
               <div className="vcs-graph-empty">
@@ -415,6 +753,7 @@ export function BranchGraph({ getToken, repository }) {
             )}
           </div>
 
+          <BranchLegend branches={legendItems} hoveredBranchName={hoveredBranchName} onHover={setHoveredBranchName} />
           <BranchMetrics metrics={metrics} />
         </section>
       </div>
@@ -430,35 +769,26 @@ const BRANCH_GRAPH_SVG_STYLE = `
   .graph-baseline line { stroke: #30363d; stroke-width: 3; stroke-linecap: round; }
   .graph-baseline .timeline-tick { stroke: rgba(139,145,157,0.18); stroke-width: 1; stroke-dasharray: 4 8; }
   .timeline-tick-label { fill: #8b919d; font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; text-anchor: middle; }
+  .branch-path-layer { cursor: pointer; outline: none; transition: opacity 150ms ease; }
+  .branch-path-hitbox { stroke-width: 24; pointer-events: stroke; }
   .branch-path-shadow { fill: none; stroke: rgba(11,14,20,0.92); stroke-width: 11; stroke-linecap: round; stroke-linejoin: round; }
-  .branch-path { fill: none; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 7px rgba(88,166,255,0.22)); }
-  .branch-path-layer.default .branch-path { stroke: #30363d; filter: none; }
-  .branch-path-layer.muted { opacity: 0.48; }
-  .branch-path-layer.merge .branch-path,
-  .branch-path-layer.fork .branch-path { stroke-dasharray: 8 7; }
+  .branch-path { fill: none; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 7px rgba(88,166,255,0.22)); transition: stroke-width 150ms ease, filter 150ms ease, opacity 150ms ease; }
+  .branch-path-layer.default .branch-path { stroke: #c0c7d4; stroke-width: 5.4; filter: none; }
+  .branch-path-layer.muted { opacity: 0.24; }
+  .branch-path-layer.active .branch-path,
+  .branch-path-layer:focus .branch-path { stroke-width: 6; filter: drop-shadow(0 0 12px rgba(88,166,255,0.34)); }
+  .branch-path-layer.default.active .branch-path,
+  .branch-path-layer.default:focus .branch-path { stroke-width: 7; }
   .branch-path-layer.status-idle .branch-path { stroke-dasharray: 12 6; }
   .branch-path-layer.status-outdated .branch-path,
-  .branch-path-layer.status-stale .branch-path { stroke-dasharray: 3 8; opacity: 0.72; }
-  .branch-path-layer.status-default .branch-path { stroke-width: 5; }
-  .commit-graph-node { cursor: pointer; outline: none; }
-  .commit-node-glow { fill: rgba(88,166,255,0.14); opacity: 0; filter: url(#branch-node-glow); transition: opacity 160ms ease, transform 160ms ease; }
-  .commit-node-core { fill: #30363d; stroke: #7d8590; stroke-width: 2.4; transition: fill 160ms ease, stroke 160ms ease, transform 160ms ease; }
-  .commit-graph-node.active .commit-node-core { stroke: #8b949e; }
-  .commit-graph-node.default .commit-node-core { fill: #30363d; stroke: #8b949e; }
-  .commit-graph-node.head .commit-node-core { fill: #58a6ff; stroke: #a2c9ff; stroke-width: 2.8; }
-  .commit-graph-node.stale .commit-node-core { stroke: #ffba42; }
-  .commit-graph-node.hovered .commit-node-glow, .commit-graph-node:focus .commit-node-glow { opacity: 1; }
-  .commit-graph-node.hovered .commit-node-core, .commit-graph-node:focus .commit-node-core { transform: scale(1.25); stroke: #d3e4ff; }
-  .commit-head-pulse { fill: rgba(88,166,255,0.18); stroke: rgba(162,201,255,0.45); stroke-width: 1; }
-  .commit-head-label rect { fill: #101419; stroke: #58a6ff; stroke-width: 1; }
-  .commit-head-label text { fill: #a2c9ff; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; }
-  .branch-svg-label { pointer-events: none; }
-  .branch-svg-label-card { fill: #1c2128; stroke: #414752; stroke-width: 1.2; filter: drop-shadow(0 16px 20px rgba(0,0,0,0.26)); }
-  .branch-svg-label.default .branch-svg-label-card { fill: #161b22; }
+  .branch-path-layer.status-stale .branch-path { stroke-dasharray: 3 8; }
+  .branch-svg-label { cursor: pointer; outline: none; pointer-events: auto; transition: opacity 150ms ease; }
+  .branch-svg-label-pill { fill: rgba(16,20,25,0.78); stroke: rgba(65,71,82,0.88); stroke-width: 1; }
+  .branch-svg-label.hovered .branch-svg-label-pill,
+  .branch-svg-label:focus .branch-svg-label-pill { stroke: var(--branch-color, #58a6ff); }
   .branch-svg-label-dot { fill: var(--branch-color, #58a6ff); }
-  .branch-svg-label-name { fill: var(--branch-color, #a2c9ff); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; font-weight: 600; }
-  .branch-svg-label-meta, .branch-svg-label-health { fill: #c0c7d4; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 10px; }
-  .branch-svg-label-health { fill: #8b919d; }
+  .branch-svg-label-name { fill: var(--branch-color, #a2c9ff); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 11px; font-weight: 700; }
+  .branch-svg-label-meta { fill: #c0c7d4; font-family: Inter, ui-sans-serif, system-ui, sans-serif; font-size: 9.5px; }
 `;
 
 const BRANCH_DASHBOARD_STYLE = `
@@ -685,46 +1015,114 @@ const BRANCH_DASHBOARD_STYLE = `
   .vcs-graph-empty .material-symbols-outlined { color: var(--vcs-primary); font-size: 32px; }
   .vcs-graph-empty p { margin: 0; font-size: 13px; }
 
-  .branch-graph-tooltip {
-    position: absolute;
-    z-index: 4;
-    min-width: 176px;
-    max-width: 260px;
-    transform: translate(14px, -50%);
-    border: 1px solid var(--vcs-border);
-    border-radius: 4px;
-    background: #1c2128;
-    box-shadow: 0 18px 34px rgba(0,0,0,0.34);
-    color: var(--vcs-text);
-    padding: 10px 12px;
-    pointer-events: none;
+
+  .branch-divergence-legend {
+    border-top: 1px solid var(--vcs-border);
+    background: #101419;
+    padding: 12px 16px 14px;
   }
 
-  .branch-graph-tooltip strong {
-    display: block;
-    color: var(--vcs-primary-soft);
-    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    font-size: 11px;
-    line-height: 16px;
-    margin-bottom: 2px;
-  }
-
-  .branch-graph-tooltip span,
-  .branch-graph-tooltip small,
-  .branch-graph-tooltip code {
-    display: block;
+  .branch-divergence-legend-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 10px;
     color: var(--vcs-muted);
-    font-size: 10px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.045em;
     line-height: 16px;
+    text-transform: uppercase;
   }
 
-  .branch-graph-tooltip code {
-    margin-top: 4px;
-    color: var(--vcs-primary);
+  .branch-divergence-legend-header span:last-child {
+    color: var(--vcs-subtle);
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .branch-divergence-legend-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 8px;
+  }
+
+  .branch-divergence-legend-item {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid rgba(65,71,82,0.72);
+    border-radius: 6px;
+    background: rgba(28,32,37,0.72);
+    color: var(--vcs-text);
+    cursor: pointer;
+    padding: 9px 10px;
+    text-align: left;
+    transition: background 150ms ease, border-color 150ms ease, opacity 150ms ease, transform 150ms ease;
+  }
+
+  .branch-divergence-legend-item:hover,
+  .branch-divergence-legend-item:focus-visible,
+  .branch-divergence-legend-item.active {
+    border-color: var(--branch-color, var(--vcs-primary));
+    background: rgba(39,42,48,0.94);
+    outline: none;
+  }
+
+  .branch-divergence-legend-item.muted { opacity: 0.46; }
+
+  .branch-divergence-legend-swatch {
+    width: 10px;
+    height: 32px;
+    border-radius: 999px;
+    background: var(--branch-color, var(--vcs-primary));
+    box-shadow: 0 0 14px color-mix(in srgb, var(--branch-color, var(--vcs-primary)) 38%, transparent);
+  }
+
+  .branch-divergence-legend-main {
+    min-width: 0;
+  }
+
+  .branch-divergence-legend-name {
+    display: block;
+    min-width: 0;
     overflow: hidden;
+    color: var(--branch-color, var(--vcs-primary-soft));
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 16px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  .branch-divergence-legend-meta {
+    display: block;
+    color: var(--vcs-muted);
+    font-size: 11px;
+    line-height: 16px;
+  }
+
+  .branch-divergence-status {
+    border: 1px solid rgba(65,71,82,0.9);
+    border-radius: 999px;
+    color: var(--vcs-muted);
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 16px;
+    padding: 1px 8px;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .branch-divergence-status.status-active { border-color: rgba(88,166,255,0.32); color: var(--vcs-primary-soft); }
+  .branch-divergence-status.status-idle { border-color: rgba(190,199,210,0.24); color: var(--vcs-muted); }
+  .branch-divergence-status.status-outdated { border-color: rgba(255,186,66,0.34); color: var(--vcs-tertiary); }
+  .branch-divergence-status.status-default { border-color: rgba(139,145,157,0.42); color: var(--vcs-text); }
 
   .branch-metrics-row {
     display: grid;
@@ -768,7 +1166,11 @@ const BRANCH_DASHBOARD_STYLE = `
     transition: background 150ms ease;
   }
 
-  .vcs-branch-row:hover { background: var(--vcs-surface-high); }
+  .vcs-branch-row:hover,
+  .vcs-branch-row:focus-visible,
+  .vcs-branch-row.hovered { background: var(--vcs-surface-high); outline: none; }
+  .vcs-branch-row.hovered { box-shadow: inset 3px 0 0 var(--branch-accent, var(--vcs-primary)); }
+  .vcs-branch-row.muted { opacity: 0.48; }
   .vcs-branch-row:last-child { border-bottom: 0; }
 
   .vcs-branch-row-heading {
