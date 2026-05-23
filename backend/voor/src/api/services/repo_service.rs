@@ -20,7 +20,7 @@ pub async fn get_all_repos(
                 stars_count, readme_path, theme, created_at::text AS created_at
          FROM repositories
          WHERE owner_id = $1
-         ORDER BY created_at DESC",
+         ORDER BY created_at ASC",
     )
     .bind(owner_id)
     .fetch_all(&client.pool)

@@ -1841,10 +1841,15 @@ button {
   stroke-width: 2.2;
 }
 
-.commit-frequency-hit {
-  fill: transparent;
+.activity-line-chart {
   cursor: crosshair;
-  pointer-events: all;
+}
+
+.commit-frequency-focus {
+  fill: var(--primary-strong);
+  stroke: var(--canvas);
+  stroke-width: 2;
+  pointer-events: none;
 }
 
 .activity-tooltip {
@@ -1879,6 +1884,11 @@ button {
   line-height: 15px;
 }
 
+.heatmap-wrap {
+  position: relative;
+  padding: 18px 14px 24px;
+}
+
 .heatmap-legend {
   display: flex;
   align-items: center;
@@ -1890,25 +1900,31 @@ button {
 
 .contribution-heatmap {
   display: grid;
+  width: 100%;
   grid-auto-flow: column;
   grid-template-rows: repeat(7, 12px);
-  grid-auto-columns: 12px;
-  gap: 4px;
-  overflow-x: auto;
-  padding: 18px 14px 24px;
+  grid-template-columns: repeat(26, minmax(0, 1fr));
+  gap: 5px;
 }
 
 .heatmap-cell {
   display: block;
-  width: 12px;
-  height: 12px;
+  width: 100%;
+  min-width: 7px;
+  aspect-ratio: 1;
   border-radius: 2px;
   background: var(--surface-high);
 }
 
 .heatmap-legend .heatmap-cell {
   width: 8px;
+  min-width: 8px;
   height: 8px;
+  aspect-ratio: auto;
+}
+
+.heatmap-tooltip {
+  transform: translate(-50%, -118%);
 }
 
 .heatmap-level-0 {
@@ -1959,6 +1975,48 @@ button {
 
 .legend-deletions::before {
   background: #ff7b72;
+}
+
+.churn-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--canvas) 34%, transparent);
+}
+
+.churn-summary div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 14px;
+}
+
+.churn-summary div:first-child {
+  border-right: 1px solid var(--border);
+}
+
+.churn-summary span {
+  color: var(--outline);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 14px;
+  text-transform: uppercase;
+}
+
+.churn-summary strong {
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.churn-summary div:first-child strong {
+  color: #39d353;
+}
+
+.churn-summary div:last-child strong {
+  color: #ff7b72;
 }
 
 .activity-churn-chart {

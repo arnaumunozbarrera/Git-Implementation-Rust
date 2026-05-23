@@ -150,6 +150,7 @@ const translations = {
         filePath: "File Path",
         changePercent: "Change %",
         commits: "Commits",
+        contributions: "contributions",
         loading: "Loading activity...",
         noData: "No activity data available",
       },
@@ -334,6 +335,7 @@ const translations = {
         filePath: "Ruta del archivo",
         changePercent: "Cambio %",
         commits: "Commits",
+        contributions: "contribuciones",
         loading: "Cargando actividad...",
         noData: "No hay datos de actividad disponibles",
       },
@@ -461,6 +463,16 @@ function visibilityFromRepository(repo) {
   }
 
   return repo.is_private ? "private" : "public";
+}
+
+function sortRepositoriesByCreation(repositories) {
+  return [...repositories].sort((left, right) => {
+    const leftTime = new Date(left?.created_at ?? 0).getTime();
+    const rightTime = new Date(right?.created_at ?? 0).getTime();
+    const normalizedLeft = Number.isNaN(leftTime) ? 0 : leftTime;
+    const normalizedRight = Number.isNaN(rightTime) ? 0 : rightTime;
+    return normalizedLeft - normalizedRight;
+  });
 }
 
 function repositoryIdFromName(name) {
@@ -642,7 +654,7 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
     setRepositoryState({ status: "loading", repositories: [], error: null });
     fetchRepositories(getToken)
       .then((repositories) => {
-        const normalizedRepositories = Array.isArray(repositories) ? repositories : [];
+        const normalizedRepositories = sortRepositoriesByCreation(Array.isArray(repositories) ? repositories : []);
         setRepositoryState({
           status: "ready",
           repositories: normalizedRepositories,
@@ -840,7 +852,6 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
         isPrivate: true,
       });
       loadRepositories();
-      setSelectedRepositoryId(repoId);
       setSaveStatus((current) => current || copy.repository.created);
     } catch {
       setCreateRepoStatus("error");
@@ -1609,6 +1620,23 @@ function CommitFrequencyCard({ copy, isLoading, timeline }) {
     value: Number(item.commit_count) || 0,
   }));
   const chart = buildLineChart(points, 720, 140, 18, 16);
+  const showTooltip = (event) => {
+    if (!chart.points.length) {
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const svgX = ((event.clientX - rect.left) / rect.width) * 720;
+    const point = chart.points.reduce((closest, candidate) => (
+      Math.abs(candidate.x - svgX) < Math.abs(closest.x - svgX) ? candidate : closest
+    ), chart.points[0]);
+
+    setTooltip({
+      ...point,
+      left: `${((event.clientX - rect.left) / rect.width) * 100}%`,
+      top: `${((event.clientY - rect.top) / rect.height) * 100}%`,
+    });
+  };
 
   return (
     <ActivityPanel
@@ -1618,28 +1646,25 @@ function CommitFrequencyCard({ copy, isLoading, timeline }) {
     >
       {chart.points.length > 0 ? (
         <div className="activity-chart-wrap" onMouseLeave={() => setTooltip(null)}>
-          <svg className="activity-line-chart" viewBox="0 0 720 140" role="img" aria-label={copy.frequency}>
+          <svg
+            className="activity-line-chart"
+            viewBox="0 0 720 140"
+            role="img"
+            aria-label={copy.frequency}
+            onMouseMove={showTooltip}
+          >
             <g className="activity-grid-lines" aria-hidden="true">
               <line x1="0" x2="720" y1="34" y2="34" />
               <line x1="0" x2="720" y1="76" y2="76" />
               <line x1="0" x2="720" y1="118" y2="118" />
             </g>
             <path className="commit-frequency-line" d={chart.path} />
-            {chart.points.map((point, index) => (
-              <circle
-                className="commit-frequency-hit"
-                cx={point.x}
-                cy={point.y}
-                key={`${point.date}-${index}`}
-                r="12"
-                onMouseEnter={() => setTooltip({ ...point, left: `${(point.x / 720) * 100}%`, top: `${(point.y / 140) * 100}%` })}
-              />
-            ))}
+            {tooltip ? <circle className="commit-frequency-focus" cx={tooltip.x} cy={tooltip.y} r="3.5" /> : null}
           </svg>
           {tooltip ? (
             <div className="activity-tooltip" style={{ left: tooltip.left, top: tooltip.top }}>
               <span>{formatDateOnly(tooltip.date)}</span>
-              <strong>{compactNumber(tooltip.value)} {copy.commits}</strong>
+              <strong>{formatInteger(tooltip.value)} {copy.commits}</strong>
             </div>
           ) : null}
         </div>
@@ -1651,8 +1676,18 @@ function CommitFrequencyCard({ copy, isLoading, timeline }) {
 }
 
 function ContributionHeatmapCard({ copy, isLoading, timeline }) {
+  const [tooltip, setTooltip] = useState(null);
   const days = buildHeatmapDays(timeline);
   const max = Math.max(...days.map((day) => day.count), 0);
+  const showTooltip = (event, day) => {
+    const rect = event.currentTarget.parentElement.getBoundingClientRect();
+    setTooltip({
+      count: day.count,
+      date: day.date,
+      left: `${((event.clientX - rect.left) / rect.width) * 100}%`,
+      top: `${((event.clientY - rect.top) / rect.height) * 100}%`,
+    });
+  };
 
   return (
     <ActivityPanel
@@ -1661,14 +1696,23 @@ function ContributionHeatmapCard({ copy, isLoading, timeline }) {
       toolbar={<HeatmapLegend copy={copy} />}
     >
       {days.length > 0 && max > 0 ? (
-        <div className="contribution-heatmap" aria-label={copy.heatmap}>
+        <div className="heatmap-wrap" onMouseLeave={() => setTooltip(null)}>
+          <div className="contribution-heatmap" aria-label={copy.heatmap}>
           {days.map((day) => (
             <span
               className={`heatmap-cell heatmap-level-${heatmapLevel(day.count, max)}`}
               key={day.key}
-              title={`${formatDateOnly(day.date)}: ${day.count} ${copy.commits}`}
+              onMouseEnter={(event) => showTooltip(event, day)}
+              onMouseMove={(event) => showTooltip(event, day)}
             />
           ))}
+          </div>
+          {tooltip ? (
+            <div className="activity-tooltip heatmap-tooltip" style={{ left: tooltip.left, top: tooltip.top }}>
+              <span>{formatDateOnly(tooltip.date)}</span>
+              <strong>{formatInteger(tooltip.count)} {copy.contributions}</strong>
+            </div>
+          ) : null}
         </div>
       ) : (
         <p className="activity-panel-empty">{isLoading ? copy.loading : copy.noData}</p>
@@ -1695,6 +1739,8 @@ function AdditionsDeletionsCard({ copy, isLoading, timeline }) {
     additions: Number(item.additions) || 0,
     deletions: Number(item.deletions) || 0,
   }));
+  const totalAdditions = points.reduce((sum, item) => sum + item.additions, 0);
+  const totalDeletions = points.reduce((sum, item) => sum + item.deletions, 0);
   const additions = buildLineChart(points.map((item) => ({ date: item.date, value: item.additions })), 420, 180, 20, 24);
   const deletions = buildLineChart(points.map((item) => ({ date: item.date, value: item.deletions })), 420, 180, 20, 24);
 
@@ -1710,17 +1756,29 @@ function AdditionsDeletionsCard({ copy, isLoading, timeline }) {
       )}
     >
       {points.length > 0 ? (
-        <svg className="activity-churn-chart" viewBox="0 0 420 180" role="img" aria-label={copy.additionsDeletions}>
-          <g className="activity-grid-lines" aria-hidden="true">
-            <line x1="0" x2="420" y1="45" y2="45" />
-            <line x1="0" x2="420" y1="90" y2="90" />
-            <line x1="0" x2="420" y1="135" y2="135" />
-          </g>
-          <path className="activity-area activity-area-additions" d={areaPath(additions.points, 156)} />
-          <path className="activity-area activity-area-deletions" d={areaPath(deletions.points, 156)} />
-          <path className="activity-churn-line additions-line" d={additions.path} />
-          <path className="activity-churn-line deletions-line" d={deletions.path} />
-        </svg>
+        <>
+          <div className="churn-summary" aria-label={copy.additionsDeletions}>
+            <div>
+              <span>{copy.additions}</span>
+              <strong>{formatCodeQuantity(totalAdditions)}</strong>
+            </div>
+            <div>
+              <span>{copy.deletions}</span>
+              <strong>{formatCodeQuantity(totalDeletions)}</strong>
+            </div>
+          </div>
+          <svg className="activity-churn-chart" viewBox="0 0 420 180" role="img" aria-label={copy.additionsDeletions}>
+            <g className="activity-grid-lines" aria-hidden="true">
+              <line x1="0" x2="420" y1="45" y2="45" />
+              <line x1="0" x2="420" y1="90" y2="90" />
+              <line x1="0" x2="420" y1="135" y2="135" />
+            </g>
+            <path className="activity-area activity-area-additions" d={areaPath(additions.points, 156)} />
+            <path className="activity-area activity-area-deletions" d={areaPath(deletions.points, 156)} />
+            <path className="activity-churn-line additions-line" d={additions.path} />
+            <path className="activity-churn-line deletions-line" d={deletions.path} />
+          </svg>
+        </>
       ) : (
         <p className="activity-panel-empty">{isLoading ? copy.loading : copy.noData}</p>
       )}
@@ -1836,6 +1894,24 @@ function buildHeatmapDays(timeline) {
       count: counts.get(key) || 0,
     };
   });
+}
+
+function formatInteger(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "0";
+  }
+
+  return new Intl.NumberFormat("en").format(number);
+}
+
+function formatCodeQuantity(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) {
+    return "0 lines";
+  }
+
+  return `${formatInteger(number)} ${number === 1 ? "line" : "lines"}`;
 }
 
 function heatmapLevel(count, max) {
