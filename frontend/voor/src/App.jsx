@@ -153,6 +153,8 @@ const translations = {
         contributions: "contributions",
         storageGained: "Storage gained",
         storageLost: "Storage lost",
+        storageConsumed: "Storage consumed",
+        storageRecovered: "Storage recovered",
         loading: "Loading activity...",
         noData: "No activity data available",
       },
@@ -340,6 +342,8 @@ const translations = {
         contributions: "contribuciones",
         storageGained: "Espacio ganado",
         storageLost: "Espacio perdido",
+        storageConsumed: "Espacio consumido",
+        storageRecovered: "Espacio recuperado",
         loading: "Cargando actividad...",
         noData: "No hay datos de actividad disponibles",
       },
@@ -1745,8 +1749,8 @@ function AdditionsDeletionsCard({ copy, isLoading, timeline }) {
   }));
   const totalAdditions = points.reduce((sum, item) => sum + item.additions, 0);
   const totalDeletions = points.reduce((sum, item) => sum + item.deletions, 0);
-  const gainedBytes = estimateCodeStorage(totalAdditions);
-  const lostBytes = estimateCodeStorage(totalDeletions);
+  const consumedBytes = estimateCodeStorage(totalAdditions);
+  const recoveredBytes = estimateCodeStorage(totalDeletions);
   const additions = buildLineChart(points.map((item) => ({ date: item.date, value: item.additions })), 420, 180, 20, 24);
   const deletions = buildLineChart(points.map((item) => ({ date: item.date, value: item.deletions })), 420, 180, 20, 24);
 
@@ -1767,12 +1771,12 @@ function AdditionsDeletionsCard({ copy, isLoading, timeline }) {
             <div>
               <span>{copy.additions}</span>
               <strong>{formatCodeQuantity(totalAdditions)}</strong>
-              <small>{copy.storageGained}: {formatBytes(gainedBytes)}</small>
+              <small>{copy.storageConsumed}: {formatBytes(consumedBytes)}</small>
             </div>
             <div>
               <span>{copy.deletions}</span>
               <strong>{formatCodeQuantity(totalDeletions)}</strong>
-              <small>{copy.storageLost}: {formatBytes(lostBytes)}</small>
+              <small>{copy.storageRecovered}: {formatBytes(recoveredBytes)}</small>
             </div>
           </div>
           <svg className="activity-churn-chart" viewBox="0 0 420 180" role="img" aria-label={copy.additionsDeletions}>

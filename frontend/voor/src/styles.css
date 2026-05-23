@@ -494,31 +494,31 @@ button {
 
 .create-repo-fab {
   position: fixed;
-  right: 28px;
-  bottom: 28px;
+  right: 24px;
+  bottom: 24px;
   z-index: 50;
   display: grid;
-  width: 58px;
-  height: 58px;
+  width: 44px;
+  height: 44px;
   place-items: center;
-  border: 1px solid color-mix(in srgb, var(--primary-strong) 72%, white);
-  border-radius: 14px;
+  border: 1px solid #000000;
+  border-radius: 10px;
   background: var(--primary-strong);
   color: var(--primary-ink);
   cursor: pointer;
-  box-shadow: 0 14px 42px rgb(0 0 0 / 38%);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 34%);
   transition: background 150ms ease, border-color 150ms ease, transform 150ms ease;
 }
 
 .create-repo-fab:hover {
-  border-color: var(--primary);
+  border-color: #000000;
   background: var(--primary);
   transform: translateY(-1px);
 }
 
 .create-repo-fab .material-symbols-outlined {
-  font-size: 30px;
-  font-variation-settings: "FILL" 0, "wght" 600, "GRAD" 0, "opsz" 32;
+  font-size: 24px;
+  font-variation-settings: "FILL" 0, "wght" 600, "GRAD" 0, "opsz" 24;
 }
 
 .avatar {
@@ -1886,6 +1886,7 @@ button {
 
 .heatmap-wrap {
   position: relative;
+  overflow-x: auto;
   padding: 18px 14px 24px;
 }
 
@@ -1900,19 +1901,18 @@ button {
 
 .contribution-heatmap {
   display: grid;
-  width: 100%;
   grid-auto-flow: column;
   grid-template-rows: repeat(7, 12px);
-  grid-template-columns: repeat(26, minmax(0, 1fr));
-  column-gap: 5px;
-  row-gap: 8px;
+  grid-auto-columns: 12px;
+  gap: 4px;
+  justify-content: start;
+  min-width: min(100%, 540px);
 }
 
 .heatmap-cell {
   display: block;
-  width: 100%;
-  min-width: 7px;
-  aspect-ratio: 1;
+  width: 12px;
+  height: 12px;
   border-radius: 2px;
   background: var(--surface-high);
 }
