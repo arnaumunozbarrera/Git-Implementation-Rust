@@ -10,8 +10,8 @@ use crate::api::models::{
     ActivityFeedItem, AnalyticsOverviewResponse, BranchCommitDistributionItem, CommitGraphNode,
     CommitGraphResponse, CommitSummary, ContentEntry, ContentsResponse, FileContentResponse,
     PaginationResponse, ReadmePreview, RepoDashboardResponse, Repository,
-    RepositoryDagMetricsResponse, RepositoryFileSummary, RepositoryStorageSummary, UserSummary,
-    VcsAnalyticsResponse, VcsBranchAnalytics, VcsTimelineBucket, VcsTopologyCacheItem,
+    RepositoryDagMetricsResponse, RepositoryFileSummary, RepositoryStorageSummary, TopModifiedFile,
+    UserSummary, VcsAnalyticsResponse, VcsBranchAnalytics, VcsTimelineBucket, VcsTopologyCacheItem,
 };
 use crate::utils::object_store::{self, ObjectType};
 
@@ -837,7 +837,7 @@ pub async fn get_vcs_analytics(
         )
     })?;
 
-    let timeline = timeline_rows
+    let mut timeline: Vec<VcsTimelineBucket> = timeline_rows
         .into_iter()
         .map(|row| VcsTimelineBucket {
             bucket_start: row.get::<String, _>("bucket_start"),
@@ -851,6 +851,12 @@ pub async fn get_vcs_analytics(
         })
         .collect();
 
+    if timeline.is_empty() {
+        timeline = load_commit_metadata_timeline(client, repo_id).await?;
+    }
+
+    let top_modified_files = summarize_top_modified_files(client, repo_id).await?;
+
     Ok(VcsAnalyticsResponse {
         repo_id: repo_id.to_string(),
         default_branch: repo.default_branch,
@@ -858,6 +864,7 @@ pub async fn get_vcs_analytics(
         branches,
         topology_cache,
         timeline,
+        top_modified_files,
     })
 }
 
@@ -1155,6 +1162,155 @@ fn count_tree_entries(
         }
     }
     Ok(())
+}
+
+async fn load_commit_metadata_timeline(
+    client: &SupabaseClient,
+    repo_id: &str,
+) -> Result<Vec<VcsTimelineBucket>, String> {
+    let rows = sqlx::query(
+        "SELECT
+            date_trunc('day', created_at)::text AS bucket_start,
+            COUNT(*)::bigint AS commit_count,
+            COUNT(DISTINCT author_id)::bigint AS author_count,
+            COALESCE(SUM(additions), 0)::bigint AS additions,
+            COALESCE(SUM(deletions), 0)::bigint AS deletions
+         FROM commits_metadata
+         WHERE repo_id = $1
+         GROUP BY date_trunc('day', created_at)
+         ORDER BY date_trunc('day', created_at) DESC
+         LIMIT 64",
+    )
+    .bind(repo_id)
+    .fetch_all(&client.pool)
+    .await
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to build commit timeline for '{}': {}",
+            repo_id, error
+        )
+    })?;
+
+    Ok(rows
+        .into_iter()
+        .map(|row| VcsTimelineBucket {
+            bucket_start: row.get::<String, _>("bucket_start"),
+            bucket_granularity: "day".to_string(),
+            commit_count: row.get::<i64, _>("commit_count"),
+            author_count: row.get::<i64, _>("author_count"),
+            branch_count: 0,
+            additions: row.get::<i64, _>("additions"),
+            deletions: row.get::<i64, _>("deletions"),
+            audit_event_count: 0,
+        })
+        .collect())
+}
+
+async fn summarize_top_modified_files(
+    client: &SupabaseClient,
+    repo_id: &str,
+) -> Result<Vec<TopModifiedFile>, String> {
+    let rows = sqlx::query(
+        "SELECT c.hash, c.parent_hash
+         FROM commits_metadata cm
+         JOIN commits c ON c.hash = cm.commit_hash
+         WHERE cm.repo_id = $1
+         ORDER BY cm.created_at DESC, c.hash DESC
+         LIMIT 300",
+    )
+    .bind(repo_id)
+    .fetch_all(&client.pool)
+    .await
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to load file modification commits for '{}': {}",
+            repo_id, error
+        )
+    })?;
+
+    let mut counts: HashMap<String, i64> = HashMap::new();
+    for row in rows {
+        let hash = row.get::<String, _>("hash");
+        let parent_hash = row.get::<Option<String>, _>("parent_hash");
+        if let Ok(changed_paths) = changed_paths_for_commit(&hash, parent_hash.as_deref()) {
+            for path in changed_paths {
+                *counts.entry(path).or_insert(0) += 1;
+            }
+        }
+    }
+
+    let total_changes: i64 = counts.values().sum();
+    if total_changes == 0 {
+        return Ok(Vec::new());
+    }
+
+    let mut files: Vec<TopModifiedFile> = counts
+        .into_iter()
+        .map(|(path, change_count)| TopModifiedFile {
+            path,
+            change_count,
+            percentage: ((change_count as f64 / total_changes as f64) * 1000.0).round() / 10.0,
+        })
+        .collect();
+
+    files.sort_by(|left, right| {
+        right
+            .change_count
+            .cmp(&left.change_count)
+            .then_with(|| left.path.cmp(&right.path))
+    });
+    files.truncate(5);
+
+    Ok(files)
+}
+
+fn changed_paths_for_commit(
+    commit_hash: &str,
+    parent_hash: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let commit = object_store::read_object(commit_hash)?;
+    let tree_hash = parse_commit_tree_hash(&commit.content)?;
+    let current_files = flatten_tree_blobs(&tree_hash, "")?;
+    let parent_files = match parent_hash.map(str::trim).filter(|value| !value.is_empty()) {
+        Some(parent) => {
+            let parent_commit = object_store::read_object(parent)?;
+            let parent_tree = parse_commit_tree_hash(&parent_commit.content)?;
+            flatten_tree_blobs(&parent_tree, "")?
+        }
+        None => HashMap::new(),
+    };
+
+    let mut paths = HashSet::new();
+    for (path, hash) in &current_files {
+        if parent_files.get(path) != Some(hash) {
+            paths.insert(path.clone());
+        }
+    }
+    for path in parent_files.keys() {
+        if !current_files.contains_key(path) {
+            paths.insert(path.clone());
+        }
+    }
+
+    Ok(paths.into_iter().collect())
+}
+
+fn flatten_tree_blobs(tree_hash: &str, prefix: &str) -> Result<HashMap<String, String>, String> {
+    let tree = object_store::read_object(tree_hash)?;
+    let mut files = HashMap::new();
+    for entry in object_store::parse_tree(&tree.content)? {
+        let path = join_repo_path(prefix, &entry.name);
+        match entry.object_type {
+            ObjectType::Blob => {
+                files.insert(path, entry.hash);
+            }
+            ObjectType::Tree => {
+                files.extend(flatten_tree_blobs(&entry.hash, &path)?);
+            }
+            ObjectType::Commit => {}
+        }
+    }
+    Ok(files)
 }
 
 fn parse_commit_tree_hash(content: &[u8]) -> Result<String, String> {

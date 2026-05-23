@@ -21,8 +21,8 @@ pub use frontend::{
     CommitGraphNode, CommitGraphQuery, CommitGraphResponse, CommitHistoryQuery, CommitSummary,
     ContentEntry, ContentsResponse, DashboardActivitySummary, FileContentResponse,
     PaginationResponse, ReadmePreview, RepoDashboardResponse, RepoPathQuery,
-    RepositoryDagMetricsResponse, RepositoryFileSummary, RepositoryStorageSummary, UserSummary,
-    VcsAnalyticsResponse, VcsBranchAnalytics, VcsTimelineBucket, VcsTopologyCacheItem,
+    RepositoryDagMetricsResponse, RepositoryFileSummary, RepositoryStorageSummary, TopModifiedFile,
+    UserSummary, VcsAnalyticsResponse, VcsBranchAnalytics, VcsTimelineBucket, VcsTopologyCacheItem,
 };
 pub use repo_access_logs::RepoAccessLog;
 pub use repositories::{

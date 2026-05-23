@@ -1767,6 +1767,318 @@ button {
   background: rgba(255, 180, 171, 0.1);
 }
 
+.activity-dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr);
+  gap: 12px;
+}
+
+.activity-panel {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.commit-frequency-panel,
+.contribution-heatmap-panel {
+  grid-column: 1 / -1;
+}
+
+.activity-panel-header {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-container);
+  padding: 10px 14px;
+}
+
+.activity-panel-header h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
+}
+
+.activity-range-pill {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--outline);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 10px;
+  line-height: 14px;
+  padding: 2px 7px;
+}
+
+.activity-chart-wrap {
+  position: relative;
+  min-height: 154px;
+  padding: 12px 10px 10px;
+}
+
+.activity-line-chart,
+.activity-churn-chart {
+  display: block;
+  width: 100%;
+  height: 154px;
+}
+
+.activity-grid-lines line {
+  stroke: color-mix(in srgb, var(--outline-variant) 52%, transparent);
+  stroke-width: 1;
+}
+
+.commit-frequency-line {
+  fill: none;
+  stroke: var(--primary-strong);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.2;
+}
+
+.commit-frequency-hit {
+  fill: transparent;
+  cursor: crosshair;
+  pointer-events: all;
+}
+
+.activity-tooltip {
+  position: absolute;
+  z-index: 2;
+  min-width: 112px;
+  transform: translate(-50%, -112%);
+  border: 1px solid color-mix(in srgb, var(--primary-strong) 54%, var(--border));
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--surface-container) 94%, black);
+  box-shadow: 0 14px 34px rgb(0 0 0 / 36%);
+  padding: 8px 9px;
+  pointer-events: none;
+}
+
+.activity-tooltip span,
+.activity-tooltip strong {
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.activity-tooltip span {
+  color: var(--outline);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.activity-tooltip strong {
+  margin-top: 2px;
+  color: var(--primary-strong);
+  font-size: 11px;
+  line-height: 15px;
+}
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--outline);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.contribution-heatmap {
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: repeat(7, 12px);
+  grid-auto-columns: 12px;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 18px 14px 24px;
+}
+
+.heatmap-cell {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--surface-high);
+}
+
+.heatmap-legend .heatmap-cell {
+  width: 8px;
+  height: 8px;
+}
+
+.heatmap-level-0 {
+  background: var(--surface-high);
+}
+
+.heatmap-level-1 {
+  background: #0e4429;
+}
+
+.heatmap-level-2 {
+  background: #006d32;
+}
+
+.heatmap-level-3 {
+  background: #26a641;
+}
+
+.heatmap-level-4 {
+  background: #39d353;
+}
+
+.chart-legend {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--outline);
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.chart-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.chart-legend span::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+}
+
+.legend-additions::before {
+  background: #39d353;
+}
+
+.legend-deletions::before {
+  background: #ff7b72;
+}
+
+.activity-churn-chart {
+  height: 196px;
+  padding: 10px;
+}
+
+.activity-area {
+  opacity: 0.16;
+}
+
+.activity-area-additions {
+  fill: #39d353;
+}
+
+.activity-area-deletions {
+  fill: #ff7b72;
+}
+
+.activity-churn-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.additions-line {
+  stroke: #39d353;
+}
+
+.deletions-line {
+  stroke: #ff7b72;
+}
+
+.top-files-table {
+  display: grid;
+  padding: 0 14px 16px;
+}
+
+.top-files-header,
+.top-file-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 72px;
+  align-items: center;
+  gap: 8px;
+}
+
+.top-files-header {
+  grid-template-columns: 24px minmax(0, 1fr) 72px;
+  border-bottom: 1px solid var(--border);
+  color: var(--outline);
+  font-size: 10px;
+  line-height: 16px;
+  padding: 10px 0 8px;
+}
+
+.top-files-header span:first-child {
+  grid-column: 2;
+}
+
+.top-files-header span:last-child {
+  text-align: right;
+}
+
+.top-file-row {
+  min-height: 36px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  position: relative;
+}
+
+.top-file-row:last-child {
+  border-bottom: 0;
+}
+
+.top-file-row .material-symbols-outlined {
+  color: var(--primary-strong);
+  font-size: 16px;
+}
+
+.top-file-row code {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.top-file-row strong {
+  color: var(--warning);
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11px;
+  line-height: 16px;
+  text-align: right;
+}
+
+.top-file-track {
+  grid-column: 2 / 4;
+  height: 2px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--canvas);
+}
+
+.top-file-track i {
+  display: block;
+  height: 100%;
+  background: var(--file-accent);
+}
+
+.activity-panel-empty {
+  margin: 0;
+  color: var(--outline);
+  font-size: 12px;
+  line-height: 18px;
+  padding: 16px;
+}
+
 .analytics-card {
   grid-column: span 6;
   max-width: 680px;
@@ -2544,6 +2856,15 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .activity-dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .commit-frequency-panel,
+  .contribution-heatmap-panel {
+    grid-column: auto;
+  }
+
   .branch-layout {
     grid-template-columns: 1fr;
   }
@@ -2663,6 +2984,16 @@ button {
   .activity-footer {
     flex-direction: column;
     gap: 4px;
+  }
+
+  .activity-panel-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .top-files-header,
+  .top-file-row {
+    grid-template-columns: 20px minmax(0, 1fr) 58px;
   }
 
   .branch-status-legend,

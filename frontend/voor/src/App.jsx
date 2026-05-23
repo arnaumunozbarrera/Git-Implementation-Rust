@@ -9,6 +9,7 @@ import {
   fetchCommitGraph,
   fetchCommitHistory,
   fetchRepositories,
+  fetchVcsAnalytics,
   initRepository,
   updateAccountProfile,
 } from "./api.js";
@@ -136,7 +137,21 @@ const translations = {
       activity: {
         eyebrow: "Repository Events",
         title: "Activity",
-        description: "This workspace is reserved for commit and access activity streams.",
+        description: "Commit velocity, contribution density, code churn, and file change concentration.",
+        frequency: "Commit Frequency",
+        range: "Last 30 Days",
+        heatmap: "Contribution Heatmap",
+        additionsDeletions: "Additions vs Deletions",
+        topFiles: "Top Modified Files",
+        less: "Less",
+        more: "More",
+        additions: "Additions",
+        deletions: "Deletions",
+        filePath: "File Path",
+        changePercent: "Change %",
+        commits: "Commits",
+        loading: "Loading activity...",
+        noData: "No activity data available",
       },
       branches: {
         eyebrow: "Version Graph",
@@ -306,7 +321,21 @@ const translations = {
       activity: {
         eyebrow: "Eventos del repositorio",
         title: "Actividad",
-        description: "Este espacio esta reservado para commits y flujos de actividad de acceso.",
+        description: "Frecuencia de commits, densidad de contribuciones, cambios de codigo y archivos mas activos.",
+        frequency: "Frecuencia de commits",
+        range: "Ultimos 30 dias",
+        heatmap: "Mapa de contribuciones",
+        additionsDeletions: "Adiciones vs eliminaciones",
+        topFiles: "Archivos mas modificados",
+        less: "Menos",
+        more: "Mas",
+        additions: "Adiciones",
+        deletions: "Eliminaciones",
+        filePath: "Ruta del archivo",
+        changePercent: "Cambio %",
+        commits: "Commits",
+        loading: "Cargando actividad...",
+        noData: "No hay datos de actividad disponibles",
       },
       branches: {
         eyebrow: "Grafo de versiones",
@@ -941,6 +970,8 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
           />
         ) : activePage === "overview" ? (
           <OverviewPage getToken={getToken} page={copy.pages.overview} repoId={activeRepository?.id} />
+        ) : activePage === "activity" ? (
+          <ActivityPage getToken={getToken} page={copy.pages.activity} repoId={activeRepository?.id} />
         ) : activePage === "branches" ? (
           <BranchGraph
             getToken={getToken}
@@ -1501,6 +1532,339 @@ function RepositorySignalsPanel({ copy, data, isReady }) {
       )}
     </section>
   );
+}
+
+function ActivityPage({ getToken, page, repoId }) {
+  const [state, setState] = useState({
+    status: "loading",
+    data: null,
+  });
+
+  useEffect(() => {
+    let active = true;
+
+    if (!repoId) {
+      setState({ status: "unavailable", data: null });
+      return () => {
+        active = false;
+      };
+    }
+
+    setState({ status: "loading", data: null });
+    fetchVcsAnalytics(repoId, getToken)
+      .then((data) => {
+        if (active) {
+          setState({ status: "ready", data });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setState({ status: "unavailable", data: null });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [getToken, repoId]);
+
+  const timeline = normalizeActivityTimeline(state.data?.timeline);
+  const topFiles = Array.isArray(state.data?.top_modified_files) ? state.data.top_modified_files : [];
+  const isLoading = state.status === "loading";
+
+  return (
+    <section className="workspace-section">
+      <div className="landing-heading">
+        <p className="label-caps">{page.eyebrow}</p>
+        <h1>{page.title}</h1>
+        <p>{page.description}</p>
+      </div>
+
+      <div className="activity-dashboard-grid">
+        <CommitFrequencyCard copy={page} isLoading={isLoading} timeline={timeline} />
+        <ContributionHeatmapCard copy={page} isLoading={isLoading} timeline={timeline} />
+        <AdditionsDeletionsCard copy={page} isLoading={isLoading} timeline={timeline} />
+        <TopModifiedFilesCard copy={page} files={topFiles} isLoading={isLoading} />
+      </div>
+    </section>
+  );
+}
+
+function ActivityPanel({ children, className = "", title, toolbar }) {
+  return (
+    <section className={`activity-panel ${className}`.trim()}>
+      <header className="activity-panel-header">
+        <h2>{title}</h2>
+        {toolbar}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function CommitFrequencyCard({ copy, isLoading, timeline }) {
+  const [tooltip, setTooltip] = useState(null);
+  const points = timeline.slice(-30).map((item) => ({
+    date: item.bucket_start,
+    value: Number(item.commit_count) || 0,
+  }));
+  const chart = buildLineChart(points, 720, 140, 18, 16);
+
+  return (
+    <ActivityPanel
+      className="commit-frequency-panel"
+      title={copy.frequency}
+      toolbar={<span className="activity-range-pill">{copy.range}</span>}
+    >
+      {chart.points.length > 0 ? (
+        <div className="activity-chart-wrap" onMouseLeave={() => setTooltip(null)}>
+          <svg className="activity-line-chart" viewBox="0 0 720 140" role="img" aria-label={copy.frequency}>
+            <g className="activity-grid-lines" aria-hidden="true">
+              <line x1="0" x2="720" y1="34" y2="34" />
+              <line x1="0" x2="720" y1="76" y2="76" />
+              <line x1="0" x2="720" y1="118" y2="118" />
+            </g>
+            <path className="commit-frequency-line" d={chart.path} />
+            {chart.points.map((point, index) => (
+              <circle
+                className="commit-frequency-hit"
+                cx={point.x}
+                cy={point.y}
+                key={`${point.date}-${index}`}
+                r="12"
+                onMouseEnter={() => setTooltip({ ...point, left: `${(point.x / 720) * 100}%`, top: `${(point.y / 140) * 100}%` })}
+              />
+            ))}
+          </svg>
+          {tooltip ? (
+            <div className="activity-tooltip" style={{ left: tooltip.left, top: tooltip.top }}>
+              <span>{formatDateOnly(tooltip.date)}</span>
+              <strong>{compactNumber(tooltip.value)} {copy.commits}</strong>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <p className="activity-panel-empty">{isLoading ? copy.loading : copy.noData}</p>
+      )}
+    </ActivityPanel>
+  );
+}
+
+function ContributionHeatmapCard({ copy, isLoading, timeline }) {
+  const days = buildHeatmapDays(timeline);
+  const max = Math.max(...days.map((day) => day.count), 0);
+
+  return (
+    <ActivityPanel
+      className="contribution-heatmap-panel"
+      title={copy.heatmap}
+      toolbar={<HeatmapLegend copy={copy} />}
+    >
+      {days.length > 0 && max > 0 ? (
+        <div className="contribution-heatmap" aria-label={copy.heatmap}>
+          {days.map((day) => (
+            <span
+              className={`heatmap-cell heatmap-level-${heatmapLevel(day.count, max)}`}
+              key={day.key}
+              title={`${formatDateOnly(day.date)}: ${day.count} ${copy.commits}`}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="activity-panel-empty">{isLoading ? copy.loading : copy.noData}</p>
+      )}
+    </ActivityPanel>
+  );
+}
+
+function HeatmapLegend({ copy }) {
+  return (
+    <div className="heatmap-legend" aria-hidden="true">
+      <span>{copy.less}</span>
+      {[0, 1, 2, 3, 4].map((level) => (
+        <i className={`heatmap-cell heatmap-level-${level}`} key={level} />
+      ))}
+      <span>{copy.more}</span>
+    </div>
+  );
+}
+
+function AdditionsDeletionsCard({ copy, isLoading, timeline }) {
+  const points = timeline.slice(-30).map((item) => ({
+    date: item.bucket_start,
+    additions: Number(item.additions) || 0,
+    deletions: Number(item.deletions) || 0,
+  }));
+  const additions = buildLineChart(points.map((item) => ({ date: item.date, value: item.additions })), 420, 180, 20, 24);
+  const deletions = buildLineChart(points.map((item) => ({ date: item.date, value: item.deletions })), 420, 180, 20, 24);
+
+  return (
+    <ActivityPanel
+      className="additions-deletions-panel"
+      title={copy.additionsDeletions}
+      toolbar={(
+        <div className="chart-legend">
+          <span className="legend-additions">{copy.additions}</span>
+          <span className="legend-deletions">{copy.deletions}</span>
+        </div>
+      )}
+    >
+      {points.length > 0 ? (
+        <svg className="activity-churn-chart" viewBox="0 0 420 180" role="img" aria-label={copy.additionsDeletions}>
+          <g className="activity-grid-lines" aria-hidden="true">
+            <line x1="0" x2="420" y1="45" y2="45" />
+            <line x1="0" x2="420" y1="90" y2="90" />
+            <line x1="0" x2="420" y1="135" y2="135" />
+          </g>
+          <path className="activity-area activity-area-additions" d={areaPath(additions.points, 156)} />
+          <path className="activity-area activity-area-deletions" d={areaPath(deletions.points, 156)} />
+          <path className="activity-churn-line additions-line" d={additions.path} />
+          <path className="activity-churn-line deletions-line" d={deletions.path} />
+        </svg>
+      ) : (
+        <p className="activity-panel-empty">{isLoading ? copy.loading : copy.noData}</p>
+      )}
+    </ActivityPanel>
+  );
+}
+
+function TopModifiedFilesCard({ copy, files, isLoading }) {
+  return (
+    <ActivityPanel className="top-modified-files-panel" title={copy.topFiles}>
+      {files.length > 0 ? (
+        <div className="top-files-table" role="table" aria-label={copy.topFiles}>
+          <div className="top-files-header" role="row">
+            <span role="columnheader">{copy.filePath}</span>
+            <span role="columnheader">{copy.changePercent}</span>
+          </div>
+          {files.map((file, index) => {
+            const percentage = Math.max(0, Math.min(100, Number(file.percentage) || 0));
+            return (
+              <div className="top-file-row" key={file.path} role="row">
+                <span className="material-symbols-outlined" aria-hidden="true">description</span>
+                <code role="cell">{file.path}</code>
+                <strong role="cell">{percentage.toFixed(1)}%</strong>
+                <span className="top-file-track" aria-hidden="true">
+                  <i style={{ width: `${percentage}%`, "--file-accent": languageAccentFor(index) }} />
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="activity-panel-empty">{isLoading ? copy.loading : copy.noData}</p>
+      )}
+    </ActivityPanel>
+  );
+}
+
+function normalizeActivityTimeline(timeline) {
+  if (!Array.isArray(timeline)) {
+    return [];
+  }
+
+  return [...timeline]
+    .filter((item) => item?.bucket_start)
+    .sort((left, right) => new Date(left.bucket_start).getTime() - new Date(right.bucket_start).getTime());
+}
+
+function buildLineChart(points, width, height, paddingX, paddingY) {
+  if (!Array.isArray(points) || points.length === 0) {
+    return { points: [], path: "" };
+  }
+
+  const max = Math.max(...points.map((point) => Number(point.value) || 0), 1);
+  const usableWidth = width - paddingX * 2;
+  const usableHeight = height - paddingY * 2;
+  const chartPoints = points.map((point, index) => ({
+    ...point,
+    x: paddingX + (points.length === 1 ? usableWidth / 2 : (index / (points.length - 1)) * usableWidth),
+    y: paddingY + usableHeight - ((Number(point.value) || 0) / max) * usableHeight,
+  }));
+
+  return {
+    points: chartPoints,
+    path: smoothPath(chartPoints),
+  };
+}
+
+function smoothPath(points) {
+  if (points.length === 0) {
+    return "";
+  }
+  if (points.length === 1) {
+    const point = points[0];
+    return `M ${point.x} ${point.y} L ${point.x + 1} ${point.y}`;
+  }
+
+  return points.reduce((path, point, index) => {
+    if (index === 0) {
+      return `M ${point.x} ${point.y}`;
+    }
+
+    const previous = points[index - 1];
+    const controlX = previous.x + (point.x - previous.x) / 2;
+    return `${path} C ${controlX} ${previous.y}, ${controlX} ${point.y}, ${point.x} ${point.y}`;
+  }, "");
+}
+
+function areaPath(points, baseline) {
+  if (!points.length) {
+    return "";
+  }
+
+  return `${smoothPath(points)} L ${points[points.length - 1].x} ${baseline} L ${points[0].x} ${baseline} Z`;
+}
+
+function buildHeatmapDays(timeline) {
+  const counts = new Map(
+    timeline.map((item) => [dateKey(item.bucket_start), Number(item.commit_count) || 0]),
+  );
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = new Date(today);
+  start.setDate(today.getDate() - 181);
+  start.setDate(start.getDate() - start.getDay());
+
+  return Array.from({ length: 26 * 7 }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    const key = dateKey(date);
+    return {
+      key,
+      date: date.toISOString(),
+      count: counts.get(key) || 0,
+    };
+  });
+}
+
+function heatmapLevel(count, max) {
+  if (!count || !max) {
+    return 0;
+  }
+  return Math.max(1, Math.min(4, Math.ceil((count / max) * 4)));
+}
+
+function dateKey(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toISOString().slice(0, 10);
+}
+
+function formatDateOnly(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  }).format(date);
 }
 
 function BranchesPage({ branch, branches, branchName, getToken, onSelectBranch, page, repoId, status }) {

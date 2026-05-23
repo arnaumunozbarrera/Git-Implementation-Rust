@@ -253,6 +253,13 @@ pub struct VcsTimelineBucket {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct TopModifiedFile {
+    pub path: String,
+    pub change_count: i64,
+    pub percentage: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct VcsAnalyticsResponse {
     pub repo_id: String,
     pub default_branch: String,
@@ -260,4 +267,5 @@ pub struct VcsAnalyticsResponse {
     pub branches: Vec<VcsBranchAnalytics>,
     pub topology_cache: Vec<VcsTopologyCacheItem>,
     pub timeline: Vec<VcsTimelineBucket>,
+    pub top_modified_files: Vec<TopModifiedFile>,
 }
