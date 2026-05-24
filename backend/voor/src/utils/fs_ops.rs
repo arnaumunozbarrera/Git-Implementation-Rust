@@ -1,6 +1,7 @@
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -135,17 +136,74 @@ fn temp_path_for(path: &Path) -> PathBuf {
 }
 
 fn clear_stale_lock_if_needed(lock_path: &Path) -> Result<(), String> {
-    let metadata = fs::metadata(lock_path)
-        .map_err(|err| format!("[ERROR] Unable to inspect repository lock: {}", err))?;
+    if lock_process_is_gone(lock_path)? {
+        remove_stale_lock_file(lock_path)?;
+        return Ok(());
+    }
+
+    let metadata = match fs::metadata(lock_path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(format!("[ERROR] Unable to inspect repository lock: {}", error)),
+    };
     let modified = metadata
         .modified()
         .map_err(|err| format!("[ERROR] Unable to inspect repository lock timestamp: {}", err))?;
     let age = modified.elapsed().unwrap_or_default();
 
     if age > Duration::from_secs(STALE_LOCK_TTL_SECS) {
-        fs::remove_file(lock_path)
-            .map_err(|err| format!("[ERROR] Unable to remove stale repository lock: {}", err))?;
+        remove_stale_lock_file(lock_path)?;
     }
 
     Ok(())
+}
+
+fn remove_stale_lock_file(lock_path: &Path) -> Result<(), String> {
+    match fs::remove_file(lock_path) {
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(format!(
+            "[ERROR] Unable to remove stale repository lock: {}",
+            error
+        )),
+    }
+}
+
+fn lock_process_is_gone(lock_path: &Path) -> Result<bool, String> {
+    let content = fs::read_to_string(lock_path)
+        .map_err(|err| format!("[ERROR] Unable to read repository lock: {}", err))?;
+    let Some(pid) = content
+        .lines()
+        .find_map(|line| line.strip_prefix("pid="))
+        .and_then(|value| value.trim().parse::<u32>().ok())
+    else {
+        return Ok(false);
+    };
+
+    if pid == std::process::id() {
+        return Ok(false);
+    }
+
+    Ok(!process_exists(pid))
+}
+
+#[cfg(target_os = "windows")]
+fn process_exists(pid: u32) -> bool {
+    let filter = format!("PID eq {}", pid);
+    Command::new("tasklist")
+        .args(["/FI", &filter, "/NH"])
+        .output()
+        .ok()
+        .and_then(|output| String::from_utf8(output.stdout).ok())
+        .map(|stdout| stdout.contains(&pid.to_string()))
+        .unwrap_or(true)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn process_exists(pid: u32) -> bool {
+    Command::new("kill")
+        .args(["-0", &pid.to_string()])
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(true)
 }

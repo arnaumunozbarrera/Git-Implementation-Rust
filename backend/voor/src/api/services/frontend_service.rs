@@ -516,8 +516,15 @@ pub async fn get_analytics_overview(
     .await
     .map_err(|error| format!("[ERROR] Failed to load analytics for '{}': {}", repo_id, error))?;
 
-    let storage_summary = summarize_repository_storage(client, repo_id).await?;
-    let branch_commit_distribution = summarize_branch_commit_distribution(client, repo_id).await?;
+    let storage_summary = summarize_repository_storage(client, repo_id)
+        .await
+        .unwrap_or(RepositoryStorageSummary {
+            bytes: 0,
+            objects: 0,
+        });
+    let branch_commit_distribution = summarize_branch_commit_distribution(client, repo_id)
+        .await
+        .unwrap_or_default();
 
     Ok(AnalyticsOverviewResponse {
         repo_id: repo_id.to_string(),
@@ -855,7 +862,9 @@ pub async fn get_vcs_analytics(
         timeline = load_commit_metadata_timeline(client, repo_id).await?;
     }
 
-    let top_modified_files = summarize_top_modified_files(client, repo_id).await?;
+    let top_modified_files = summarize_top_modified_files(client, repo_id)
+        .await
+        .unwrap_or_default();
 
     Ok(VcsAnalyticsResponse {
         repo_id: repo_id.to_string(),

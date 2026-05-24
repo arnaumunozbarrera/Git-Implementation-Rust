@@ -322,9 +322,14 @@ fn build_tree_recursive(prefix: &Path, entries: &[(String, String)]) -> Result<S
 
     for (path, hash) in entries {
         let full_path = Path::new(path);
-        let relative = full_path
-            .strip_prefix(prefix)
-            .map_err(|_| format!("[ERROR] Invalid staged path '{}'", path))?;
+        let relative = if prefix.as_os_str().is_empty() {
+            full_path
+        } else {
+            match full_path.strip_prefix(prefix) {
+                Ok(relative) => relative,
+                Err(_) => continue,
+            }
+        };
 
         let mut components = relative.components();
         let Some(first) = components.next() else {

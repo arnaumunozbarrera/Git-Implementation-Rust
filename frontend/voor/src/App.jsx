@@ -175,6 +175,12 @@ const translations = {
         eyebrow: "Remote Operations",
         title: "Sync Monitor",
         description: "This workspace is reserved for push, pull, and database sync telemetry.",
+        cloneDesktop: "Clone to Desktop",
+        cloneReady: "Clone the selected remote repository to Desktop with the latest default branch content.",
+        cloning: "Cloning...",
+        cloned: "Repository cloned",
+        cloneFailed: "Clone failed",
+        refresh: "Refresh",
       },
     },
     settings: {
@@ -364,6 +370,12 @@ const translations = {
         eyebrow: "Operaciones remotas",
         title: "Monitor de sincronizacion",
         description: "Este espacio esta reservado para telemetria de push, pull y sincronizacion de base de datos.",
+        cloneDesktop: "Clonar al escritorio",
+        cloneReady: "Clona el repositorio remoto seleccionado al escritorio con el ultimo contenido de la rama principal.",
+        cloning: "Clonando...",
+        cloned: "Repositorio clonado",
+        cloneFailed: "Fallo la clonacion",
+        refresh: "Actualizar",
       },
     },
     settings: {
@@ -626,6 +638,7 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   const [deleteConfirmRepo, setDeleteConfirmRepo] = useState(null);
   const [deleteNotice, setDeleteNotice] = useState(null);
   const [cloneNotice, setCloneNotice] = useState(null);
+  const [cloneStatus, setCloneStatus] = useState({ status: "idle", repoId: "", message: "" });
   const [repositoryState, setRepositoryState] = useState({
     status: "loading",
     repositories: [],
@@ -866,6 +879,38 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
     }
   };
 
+  const handleCloneActiveRepository = async () => {
+    if (!activeRepository || cloneStatus.status === "loading") {
+      return;
+    }
+
+    setCloneStatus({ status: "loading", repoId: activeRepository.id, message: "" });
+    try {
+      const cloneResponse = await cloneRepositoryToDesktop(
+        activeRepository.id,
+        { default_branch: activeRepository.default_branch || "main" },
+        getToken,
+      );
+      setCloneStatus({
+        status: "ready",
+        repoId: activeRepository.id,
+        message: cloneResponse?.path || "",
+      });
+      setCloneNotice({
+        path: cloneResponse?.path || "",
+        title: copy.pages.sync.cloned,
+        message: copy.repository.clonedMessage,
+      });
+      loadRepositories();
+    } catch (error) {
+      setCloneStatus({
+        status: "error",
+        repoId: activeRepository.id,
+        message: error?.message || copy.pages.sync.cloneFailed,
+      });
+    }
+  };
+
   const appClassName = `app-shell theme-${settings.theme}`;
   const accountName = displayNameFromUser(user, settings);
   const accountEmail = emailFromUser(user, settings);
@@ -995,6 +1040,15 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
           <BranchGraph
             getToken={getToken}
             repository={activeRepository}
+          />
+        ) : activePage === "sync" ? (
+          <SyncMonitorPage
+            cloneStatus={cloneStatus}
+            onClone={handleCloneActiveRepository}
+            onRefresh={loadRepositories}
+            page={copy.pages.sync}
+            repository={activeRepository}
+            repositoryStatus={repositoryState.status}
           />
         ) : (
           <EmptySection page={copy.pages[activePage]} />
@@ -2098,6 +2152,53 @@ function BranchesPage({ branch, branches, branchName, getToken, onSelectBranch, 
             <p className="branch-empty">{isLoading ? page.loading : page.noData}</p>
           )}
         </section>
+      </div>
+    </section>
+  );
+}
+
+function SyncMonitorPage({ cloneStatus, onClone, onRefresh, page, repository, repositoryStatus }) {
+  const isCloning = cloneStatus.status === "loading" && cloneStatus.repoId === repository?.id;
+  const statusText = isCloning
+    ? page.cloning
+    : cloneStatus.status === "ready" && cloneStatus.repoId === repository?.id
+      ? page.cloned
+      : cloneStatus.status === "error" && cloneStatus.repoId === repository?.id
+        ? page.cloneFailed
+        : page.cloneReady;
+
+  return (
+    <section className="workspace-section">
+      <div className="landing-heading">
+        <p className="label-caps">{page.eyebrow}</p>
+        <h1>{page.title}</h1>
+        <p>{page.description}</p>
+      </div>
+      <div className="settings-panel">
+        <header className="settings-panel-header">
+          <h2>{repository?.name || repository?.id || page.title}</h2>
+          <span>{repository?.default_branch || ""}</span>
+        </header>
+        <div className="settings-panel-body">
+          <div className="danger-action-row">
+            <div>
+              <strong>{page.cloneDesktop}</strong>
+              <span>{statusText}</span>
+              {cloneStatus.message && cloneStatus.repoId === repository?.id ? <code>{cloneStatus.message}</code> : null}
+            </div>
+            <button
+              className="secondary-button"
+              disabled={!repository || repositoryStatus !== "ready" || isCloning}
+              type="button"
+              onClick={onClone}
+            >
+              {isCloning ? page.cloning : page.cloneDesktop}
+            </button>
+          </div>
+          <div className="settings-actions">
+            <button className="secondary-button" type="button" onClick={onRefresh}>{page.refresh}</button>
+          </div>
+        </div>
       </div>
     </section>
   );

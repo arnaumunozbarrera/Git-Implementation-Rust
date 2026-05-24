@@ -116,6 +116,61 @@ cargo run --bin voor -- --version
 
 ---
 
+## Install And Update Voor Core
+
+### Windows
+
+Build the release executable and copy it over the existing installed binary:
+
+```powershell
+cd .\backend\voor\
+cargo build --release --bin voor
+New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\voor"
+Copy-Item -LiteralPath ".\target\release\voor.exe" -Destination "$env:LOCALAPPDATA\Programs\voor\voor.exe" -Force
+```
+
+Add this folder to the user `PATH` if it is not already present:
+
+```powershell
+[Environment]::SetEnvironmentVariable(
+  "Path",
+  [Environment]::GetEnvironmentVariable("Path", "User") + ";$env:LOCALAPPDATA\Programs\voor",
+  "User"
+)
+```
+
+Open a new terminal and verify:
+
+```powershell
+voor --help
+voor --version
+```
+
+To update Voor later, rebuild and run the same `Copy-Item` command. This overwrites the existing core executable in place.
+
+### Linux / macOS
+
+Build the release executable and install it into a directory on `PATH`:
+
+```bash
+cd backend/voor
+cargo build --release --bin voor
+mkdir -p ~/.local/bin
+cp ./target/release/voor ~/.local/bin/voor
+chmod +x ~/.local/bin/voor
+```
+
+Ensure `~/.local/bin` is on `PATH`, then verify:
+
+```bash
+voor --help
+voor --version
+```
+
+To update Voor later, rebuild and run the same `cp` command. This overwrites the existing core executable in place.
+
+---
+
 ## CLI Usage
 
 ### Local repository commands
@@ -139,6 +194,7 @@ voor login
 voor init-remote
 voor push
 voor pull master
+voor sync
 voor sync-db
 voor logout
 ```
