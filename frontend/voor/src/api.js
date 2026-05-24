@@ -61,6 +61,13 @@ export async function cloneRepositoryToDesktop(repoId, payload, getToken) {
   });
 }
 
+export async function forceRecloneRepositoryToDesktop(repoId, payload, getToken) {
+  return fetchWithClerkAuth(`/repos/${encodeURIComponent(repoId)}/force-reclone-desktop`, getToken, {
+    method: "POST",
+    body: JSON.stringify(payload ?? {}),
+  });
+}
+
 export async function fetchBranches(repoId, getToken) {
   return fetchWithClerkAuth(`/repos/${encodeURIComponent(repoId)}/branches`, getToken);
 }

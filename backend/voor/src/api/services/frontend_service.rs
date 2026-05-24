@@ -1058,11 +1058,84 @@ async fn summarize_repository_storage(
         objects: 0,
     };
 
-    for head in heads {
-        add_reachable_object_size(&head, &mut seen, &mut summary)?;
+    for head in &heads {
+        if add_reachable_object_size(head, &mut seen, &mut summary).is_err() {
+            return summarize_repository_storage_from_database(client, repo_id).await;
+        }
+    }
+
+    if summary.objects == 0 && !heads.is_empty() {
+        return summarize_repository_storage_from_database(client, repo_id).await;
     }
 
     Ok(summary)
+}
+
+async fn summarize_repository_storage_from_database(
+    client: &SupabaseClient,
+    repo_id: &str,
+) -> Result<RepositoryStorageSummary, String> {
+    let row = sqlx::query(
+        "WITH RECURSIVE
+            branch_heads AS (
+                SELECT DISTINCT last_commit_hash AS hash
+                FROM branches
+                WHERE repo_id = $1 AND last_commit_hash IS NOT NULL
+            ),
+            commit_walk(hash) AS (
+                SELECT hash FROM branch_heads
+                UNION
+                SELECT ce.parent_hash
+                FROM commit_edges ce
+                JOIN commit_walk cw ON cw.hash = ce.child_hash
+                WHERE ce.repo_id = $1
+                UNION
+                SELECT c.parent_hash
+                FROM commits c
+                JOIN commit_walk cw ON cw.hash = c.hash
+                WHERE c.parent_hash IS NOT NULL
+            ),
+            root_trees AS (
+                SELECT DISTINCT c.tree_hash
+                FROM commits c
+                JOIN commit_walk cw ON cw.hash = c.hash
+            ),
+            tree_walk(tree_hash) AS (
+                SELECT tree_hash FROM root_trees
+                UNION
+                SELECT te.hash
+                FROM tree_entries te
+                JOIN tree_walk tw ON tw.tree_hash = te.tree_hash
+                WHERE te.type = 'tree'
+            ),
+            reachable_blobs AS (
+                SELECT DISTINCT te.hash
+                FROM tree_entries te
+                JOIN tree_walk tw ON tw.tree_hash = te.tree_hash
+                WHERE te.type = 'blob'
+            )
+         SELECT
+            COALESCE((SELECT SUM(COALESCE(b.size, OCTET_LENGTH(b.content), 0)) FROM blobs b JOIN reachable_blobs rb ON rb.hash = b.hash), 0)::bigint AS bytes,
+            (
+                (SELECT COUNT(DISTINCT hash) FROM commit_walk) +
+                (SELECT COUNT(DISTINCT tree_hash) FROM tree_walk) +
+                (SELECT COUNT(DISTINCT hash) FROM reachable_blobs)
+            )::bigint AS objects",
+    )
+    .bind(repo_id)
+    .fetch_one(&client.pool)
+    .await
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to summarize repository storage from database for '{}': {}",
+            repo_id, error
+        )
+    })?;
+
+    Ok(RepositoryStorageSummary {
+        bytes: row.get::<i64, _>("bytes").max(0) as usize,
+        objects: row.get::<i64, _>("objects").max(0) as usize,
+    })
 }
 
 async fn summarize_branch_commit_distribution(

@@ -5,7 +5,6 @@ import { BranchMetrics } from "./BranchMetrics.jsx";
 import { BranchLabel } from "./BranchLabel.jsx";
 import { BranchPath } from "./BranchPath.jsx";
 import { BranchSidebar } from "./BranchSidebar.jsx";
-import { BranchLegend } from "./BranchLegend.jsx";
 
 function gradientId(value) {
   return String(value).replace(/[^a-zA-Z0-9_-]/g, "-");
@@ -178,7 +177,7 @@ function latestCommitDate(branch) {
 
 function branchDivergence(branch) {
   const divergence = branch?.divergence || {};
-  const ahead = firstNumber(
+  const rawAhead = firstNumber(
     divergence.ahead,
     divergence.commitsAhead,
     divergence.commits_ahead,
@@ -187,8 +186,8 @@ function branchDivergence(branch) {
     branch?.commitsAhead,
     branch?.commits_ahead,
     branch?.ahead_count,
-  ) || 0;
-  const behind = firstNumber(
+  );
+  const rawBehind = firstNumber(
     divergence.behind,
     divergence.commitsBehind,
     divergence.commits_behind,
@@ -197,11 +196,21 @@ function branchDivergence(branch) {
     branch?.commitsBehind,
     branch?.commits_behind,
     branch?.behind_count,
-  ) || 0;
+  );
+  const rawDistance = firstNumber(
+    divergence.distance,
+    divergence.divergenceDistance,
+    divergence.divergence_distance,
+    branch?.divergenceDistance,
+    branch?.divergence_distance,
+  );
+  const ahead = rawAhead ?? (rawBehind === null && rawDistance !== null ? rawDistance : 0);
+  const behind = rawBehind ?? 0;
 
   return {
     ahead: Math.max(0, Math.round(ahead)),
     behind: Math.max(0, Math.round(behind)),
+    distance: Math.max(0, Math.round(rawDistance ?? ahead + behind)),
   };
 }
 
@@ -359,6 +368,7 @@ function buildDivergenceTopology({ branches, repository, hoveredBranchName }) {
       color: branchColor(branch, index, isDefault),
       ahead: isDefault ? 0 : divergence.ahead,
       behind: isDefault ? 0 : divergence.behind,
+      distance: isDefault ? 0 : divergence.distance,
       health: firstNumber(branch?.health, branch?.score, branch?.stabilityScore),
       latestAt: latestCommitDate(branch),
       latestCommit: latestCommit(branch),
@@ -549,7 +559,6 @@ export function BranchGraph({ getToken, repository }) {
   const labels = Array.isArray(topology.labels) ? topology.labels : [];
   const heatZones = Array.isArray(topology.heatZones) ? topology.heatZones : [];
   const axisTicks = Array.isArray(topology.axisTicks) ? topology.axisTicks : [];
-  const legendItems = Array.isArray(topology.legendItems) ? topology.legendItems : [];
   const topologyWidth = firstNumber(topology.width) || 1040;
   const topologyHeight = firstNumber(topology.height) || 430;
   const centerY = firstNumber(topology.centerY) || topologyHeight / 2;
@@ -753,7 +762,6 @@ export function BranchGraph({ getToken, repository }) {
             )}
           </div>
 
-          <BranchLegend branches={legendItems} hoveredBranchName={hoveredBranchName} onHover={setHoveredBranchName} />
           <BranchMetrics metrics={metrics} />
         </section>
       </div>

@@ -10,6 +10,7 @@ import {
   fetchCommitHistory,
   fetchRepositories,
   fetchVcsAnalytics,
+  forceRecloneRepositoryToDesktop,
   initRepository,
   updateAccountProfile,
 } from "./api.js";
@@ -180,6 +181,11 @@ const translations = {
         cloning: "Cloning...",
         cloned: "Repository cloned",
         cloneFailed: "Clone failed",
+        forcePull: "Overwrite local copy",
+        forcePullReady: "Replace the local Desktop repository with every remote branch and the default branch working tree.",
+        forcePulling: "Overwriting...",
+        forcePulled: "Local copy overwritten",
+        forcePullFailed: "Overwrite failed",
         refresh: "Refresh",
       },
     },
@@ -375,6 +381,11 @@ const translations = {
         cloning: "Clonando...",
         cloned: "Repositorio clonado",
         cloneFailed: "Fallo la clonacion",
+        forcePull: "Sobrescribir copia local",
+        forcePullReady: "Reemplaza el repositorio local del escritorio con todas las ramas remotas y el arbol de trabajo de la rama principal.",
+        forcePulling: "Sobrescribiendo...",
+        forcePulled: "Copia local sobrescrita",
+        forcePullFailed: "Fallo la sobrescritura",
         refresh: "Actualizar",
       },
     },
@@ -639,6 +650,7 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   const [deleteNotice, setDeleteNotice] = useState(null);
   const [cloneNotice, setCloneNotice] = useState(null);
   const [cloneStatus, setCloneStatus] = useState({ status: "idle", repoId: "", message: "" });
+  const [forcePullStatus, setForcePullStatus] = useState({ status: "idle", repoId: "", message: "" });
   const [repositoryState, setRepositoryState] = useState({
     status: "loading",
     repositories: [],
@@ -911,6 +923,34 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
     }
   };
 
+  const handleForcePullActiveRepository = async () => {
+    if (!activeRepository || forcePullStatus.status === "loading") {
+      return;
+    }
+
+    setForcePullStatus({ status: "loading", repoId: activeRepository.id, message: "" });
+    try {
+      const response = await forceRecloneRepositoryToDesktop(activeRepository.id, {}, getToken);
+      setForcePullStatus({
+        status: "ready",
+        repoId: activeRepository.id,
+        message: response?.path || "",
+      });
+      setCloneNotice({
+        path: response?.path || "",
+        title: copy.pages.sync.forcePulled,
+        message: response?.message || copy.pages.sync.forcePullReady,
+      });
+      loadRepositories();
+    } catch (error) {
+      setForcePullStatus({
+        status: "error",
+        repoId: activeRepository.id,
+        message: error?.message || copy.pages.sync.forcePullFailed,
+      });
+    }
+  };
+
   const appClassName = `app-shell theme-${settings.theme}`;
   const accountName = displayNameFromUser(user, settings);
   const accountEmail = emailFromUser(user, settings);
@@ -1044,7 +1084,9 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
         ) : activePage === "sync" ? (
           <SyncMonitorPage
             cloneStatus={cloneStatus}
+            forcePullStatus={forcePullStatus}
             onClone={handleCloneActiveRepository}
+            onForcePull={handleForcePullActiveRepository}
             onRefresh={loadRepositories}
             page={copy.pages.sync}
             repository={activeRepository}
@@ -1400,8 +1442,7 @@ function hasOverviewData(data) {
     data &&
       Number.isFinite(Number(data.commits_count)) &&
       Number.isFinite(Number(data.contributors_count)) &&
-      Number.isFinite(Number(data.repository_size_bytes)) &&
-      Number.isFinite(Number(data.object_count)),
+      Number.isFinite(Number(data.repository_size_bytes)),
   );
 }
 
@@ -1461,10 +1502,14 @@ function OverviewPage({ getToken, page, repoId }) {
     };
   }, [getToken, repoId]);
 
-  const data = state.data;
+  const data = state.data ?? {};
   const isReady = state.status === "ready" && hasOverviewData(data);
   const unavailableText = state.status === "loading" ? stats.loading : stats.noData;
   const latestActivity = isReady ? formatRelativeTime(getLatestActivity(data)) : "";
+  const repositorySizeBytes = Number.isFinite(Number(data.repository_size_bytes))
+    ? Number(data.repository_size_bytes)
+    : 0;
+  const objectCount = Number.isFinite(Number(data.object_count)) ? Number(data.object_count) : 0;
 
   return (
     <section className="workspace-section">
@@ -1491,8 +1536,8 @@ function OverviewPage({ getToken, page, repoId }) {
         <OverviewStatCard
           icon="database"
           label={stats.repositorySize}
-          value={isReady ? formatBytes(data.repository_size_bytes) : unavailableText}
-          meta={isReady ? `${compactNumber(data.object_count)} ${stats.objects}` : ""}
+          value={isReady ? formatBytes(repositorySizeBytes) : unavailableText}
+          meta={isReady ? `${compactNumber(objectCount)} ${stats.objects}` : ""}
         />
       </div>
 
@@ -1757,7 +1802,7 @@ function ContributionHeatmapCard({ copy, isLoading, timeline }) {
       title={copy.heatmap}
       toolbar={<HeatmapLegend copy={copy} />}
     >
-      {days.length > 0 && max > 0 ? (
+      {days.length > 0 ? (
         <div className="heatmap-wrap" onMouseLeave={() => setTooltip(null)}>
           <div className="contribution-heatmap" aria-label={copy.heatmap}>
           {days.map((day) => (
@@ -1946,11 +1991,12 @@ function buildHeatmapDays(timeline) {
   );
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const year = today.getFullYear();
+  const daysInYear = new Date(year, 1, 29).getMonth() === 1 ? 366 : 365;
   const start = new Date(today);
-  start.setDate(today.getDate() - 181);
-  start.setDate(start.getDate() - start.getDay());
+  start.setDate(today.getDate() - (daysInYear - 1));
 
-  return Array.from({ length: 26 * 7 }, (_, index) => {
+  return Array.from({ length: daysInYear }, (_, index) => {
     const date = new Date(start);
     date.setDate(start.getDate() + index);
     const key = dateKey(date);
@@ -2157,8 +2203,18 @@ function BranchesPage({ branch, branches, branchName, getToken, onSelectBranch, 
   );
 }
 
-function SyncMonitorPage({ cloneStatus, onClone, onRefresh, page, repository, repositoryStatus }) {
+function SyncMonitorPage({
+  cloneStatus,
+  forcePullStatus,
+  onClone,
+  onForcePull,
+  onRefresh,
+  page,
+  repository,
+  repositoryStatus,
+}) {
   const isCloning = cloneStatus.status === "loading" && cloneStatus.repoId === repository?.id;
+  const isForcePulling = forcePullStatus.status === "loading" && forcePullStatus.repoId === repository?.id;
   const statusText = isCloning
     ? page.cloning
     : cloneStatus.status === "ready" && cloneStatus.repoId === repository?.id
@@ -2166,6 +2222,13 @@ function SyncMonitorPage({ cloneStatus, onClone, onRefresh, page, repository, re
       : cloneStatus.status === "error" && cloneStatus.repoId === repository?.id
         ? page.cloneFailed
         : page.cloneReady;
+  const forcePullText = isForcePulling
+    ? page.forcePulling
+    : forcePullStatus.status === "ready" && forcePullStatus.repoId === repository?.id
+      ? page.forcePulled
+      : forcePullStatus.status === "error" && forcePullStatus.repoId === repository?.id
+        ? page.forcePullFailed
+        : page.forcePullReady;
 
   return (
     <section className="workspace-section">
@@ -2193,6 +2256,21 @@ function SyncMonitorPage({ cloneStatus, onClone, onRefresh, page, repository, re
               onClick={onClone}
             >
               {isCloning ? page.cloning : page.cloneDesktop}
+            </button>
+          </div>
+          <div className="danger-action-row">
+            <div>
+              <strong>{page.forcePull}</strong>
+              <span>{forcePullText}</span>
+              {forcePullStatus.message && forcePullStatus.repoId === repository?.id ? <code>{forcePullStatus.message}</code> : null}
+            </div>
+            <button
+              className="secondary-button"
+              disabled={!repository || repositoryStatus !== "ready" || isForcePulling || isCloning}
+              type="button"
+              onClick={onForcePull}
+            >
+              {isForcePulling ? page.forcePulling : page.forcePull}
             </button>
           </div>
           <div className="settings-actions">

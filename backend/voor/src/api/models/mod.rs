@@ -26,8 +26,8 @@ pub use frontend::{
 };
 pub use repo_access_logs::RepoAccessLog;
 pub use repositories::{
-    CloneRepoRequest, CloneRepoResponse, DeleteActionResponse, InitRepoRequest, InitRepoResponse,
-    Repository,
+    CloneRepoRequest, CloneRepoResponse, DeleteActionResponse, ForceRecloneRequest,
+    InitRepoRequest, InitRepoResponse, Repository,
 };
 pub use stars::Star;
 pub use tree_entries::TreeEntry;

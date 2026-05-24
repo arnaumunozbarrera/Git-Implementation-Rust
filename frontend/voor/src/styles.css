@@ -1886,7 +1886,7 @@ button {
 
 .heatmap-wrap {
   position: relative;
-  overflow-x: auto;
+  overflow: visible;
   padding: 18px 14px 24px;
 }
 
@@ -1902,17 +1902,17 @@ button {
 .contribution-heatmap {
   display: grid;
   grid-auto-flow: column;
-  grid-template-rows: repeat(7, 12px);
-  grid-auto-columns: 12px;
-  gap: 4px;
-  justify-content: start;
-  min-width: min(100%, 540px);
+  grid-template-rows: repeat(7, minmax(7px, 1fr));
+  grid-auto-columns: minmax(7px, 1fr);
+  gap: clamp(2px, 0.38vw, 4px);
+  width: 100%;
+  max-width: 100%;
 }
 
 .heatmap-cell {
   display: block;
-  width: 12px;
-  height: 12px;
+  width: 100%;
+  aspect-ratio: 1;
   border-radius: 2px;
   background: var(--surface-high);
 }
