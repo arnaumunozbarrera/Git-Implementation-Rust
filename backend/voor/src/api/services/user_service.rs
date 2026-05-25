@@ -1,5 +1,6 @@
 use crate::api::clients::supabase::SupabaseClient;
 use crate::api::models::{DeleteActionResponse, User};
+use crate::api::services::repo_service::delete_repository_records;
 
 pub async fn get_all_users(client: &SupabaseClient) -> Result<Vec<User>, sqlx::Error> {
     let users = sqlx::query_as::<_, User>("SELECT * FROM users")
@@ -73,49 +74,7 @@ pub async fn delete_user_account(
             })?;
 
     for repo_id in &repo_ids {
-        sqlx::query("DELETE FROM stars WHERE repo_id = $1")
-            .bind(repo_id)
-            .execute(&client.pool)
-            .await
-            .map_err(|error| {
-                format!(
-                    "[ERROR] Failed to delete stars for '{}': {}",
-                    repo_id, error
-                )
-            })?;
-
-        sqlx::query("DELETE FROM repo_access_logs WHERE repo_id = $1")
-            .bind(repo_id)
-            .execute(&client.pool)
-            .await
-            .map_err(|error| {
-                format!(
-                    "[ERROR] Failed to delete access logs for '{}': {}",
-                    repo_id, error
-                )
-            })?;
-
-        sqlx::query("DELETE FROM commits_metadata WHERE repo_id = $1")
-            .bind(repo_id)
-            .execute(&client.pool)
-            .await
-            .map_err(|error| {
-                format!(
-                    "[ERROR] Failed to delete commit metadata for '{}': {}",
-                    repo_id, error
-                )
-            })?;
-
-        sqlx::query("DELETE FROM branches WHERE repo_id = $1")
-            .bind(repo_id)
-            .execute(&client.pool)
-            .await
-            .map_err(|error| {
-                format!(
-                    "[ERROR] Failed to delete branches for '{}': {}",
-                    repo_id, error
-                )
-            })?;
+        delete_repository_records(client, repo_id).await?;
     }
 
     sqlx::query("DELETE FROM repositories WHERE owner_id = $1")
@@ -158,6 +117,28 @@ pub async fn delete_user_account(
         .map_err(|error| {
             format!(
                 "[ERROR] Failed to delete user commit metadata '{}': {}",
+                user_id, error
+            )
+        })?;
+
+    sqlx::query("UPDATE pull_requests SET author_id = NULL WHERE author_id = $1")
+        .bind(user_id)
+        .execute(&client.pool)
+        .await
+        .map_err(|error| {
+            format!(
+                "[ERROR] Failed to clear user pull request authorship '{}': {}",
+                user_id, error
+            )
+        })?;
+
+    sqlx::query("UPDATE dag_modifications SET author_id = NULL WHERE author_id = $1")
+        .bind(user_id)
+        .execute(&client.pool)
+        .await
+        .map_err(|error| {
+            format!(
+                "[ERROR] Failed to clear user DAG modification authorship '{}': {}",
                 user_id, error
             )
         })?;

@@ -19,9 +19,10 @@ pub use commits_metadata::CommitMetadata;
 pub use frontend::{
     ActivityFeedItem, ActivityFeedQuery, AnalyticsOverviewResponse, BranchCommitDistributionItem,
     CommitGraphNode, CommitGraphQuery, CommitGraphResponse, CommitHistoryQuery, CommitSummary,
-    ContentEntry, ContentsResponse, DashboardActivitySummary, FileContentResponse,
-    PaginationResponse, ReadmePreview, RepoDashboardResponse, RepoPathQuery,
-    RepositoryDagMetricsResponse, RepositoryFileSummary, RepositoryStorageSummary, TopModifiedFile,
+    ContentEntry, ContentsResponse, DashboardActivitySummary, FailurePropagationBucket,
+    FileContentResponse, PaginationResponse, ReadmePreview, RepoDashboardResponse, RepoPathQuery,
+    RepositoryDagMetricsResponse, RepositoryFileSummary, RepositoryStorageSummary,
+    SyncActionCounts, SyncAnomalyItem, SyncMonitorLogItem, SyncMonitorResponse, TopModifiedFile,
     UserSummary, VcsAnalyticsResponse, VcsBranchAnalytics, VcsTimelineBucket, VcsTopologyCacheItem,
 };
 pub use repo_access_logs::RepoAccessLog;

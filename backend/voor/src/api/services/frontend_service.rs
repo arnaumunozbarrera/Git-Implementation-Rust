@@ -8,9 +8,10 @@ use sqlx::Row;
 use crate::api::clients::supabase::SupabaseClient;
 use crate::api::models::{
     ActivityFeedItem, AnalyticsOverviewResponse, BranchCommitDistributionItem, CommitGraphNode,
-    CommitGraphResponse, CommitSummary, ContentEntry, ContentsResponse, FileContentResponse,
-    PaginationResponse, ReadmePreview, RepoDashboardResponse, Repository,
-    RepositoryDagMetricsResponse, RepositoryFileSummary, RepositoryStorageSummary, TopModifiedFile,
+    CommitGraphResponse, CommitSummary, ContentEntry, ContentsResponse, FailurePropagationBucket,
+    FileContentResponse, PaginationResponse, ReadmePreview, RepoDashboardResponse, Repository,
+    RepositoryDagMetricsResponse, RepositoryFileSummary, RepositoryStorageSummary,
+    SyncActionCounts, SyncAnomalyItem, SyncMonitorLogItem, SyncMonitorResponse, TopModifiedFile,
     UserSummary, VcsAnalyticsResponse, VcsBranchAnalytics, VcsTimelineBucket, VcsTopologyCacheItem,
 };
 use crate::utils::object_store::{self, ObjectType};
@@ -490,6 +491,197 @@ pub async fn get_activity_feed(
     Ok(PaginationResponse {
         items: paged_items,
         next_offset,
+    })
+}
+
+pub async fn get_sync_monitor(
+    client: &SupabaseClient,
+    repo_id: &str,
+) -> Result<SyncMonitorResponse, String> {
+    ensure_local_repo(repo_id)?;
+    load_repository(client, repo_id).await?;
+
+    let log_rows = sqlx::query(
+        "SELECT *
+         FROM (
+            SELECT
+                'access_log'::text AS source,
+                COALESCE(l.action, 'sync')::text AS action,
+                'Info'::text AS severity,
+                CONCAT(COALESCE(l.action, 'sync'), ' action')::text AS message,
+                l.metadata #>> '{branch}' AS branch_name,
+                COALESCE(l.metadata #>> '{head}', l.metadata #>> '{commit_hash}') AS commit_hash,
+                l.created_at::text AS created_at,
+                u.id AS actor_id,
+                u.username,
+                u.email,
+                COALESCE(l.metadata, '{}'::jsonb) AS metadata
+            FROM repo_access_logs l
+            LEFT JOIN users u ON u.id = l.user_id
+            WHERE l.repo_id = $1 AND COALESCE(l.action, '') = ANY(ARRAY['push', 'pull', 'merge', 'sync', 'sync-db'])
+            UNION ALL
+            SELECT
+                'dag_modification'::text AS source,
+                dm.event_type AS action,
+                CASE dm.severity
+                    WHEN 'danger' THEN 'Critical'
+                    WHEN 'warning' THEN 'Warn'
+                    ELSE 'Info'
+                END AS severity,
+                dm.message,
+                dm.branch_name,
+                dm.commit_hash,
+                dm.created_at::text AS created_at,
+                u.id AS actor_id,
+                u.username,
+                u.email,
+                COALESCE(dm.metadata, '{}'::jsonb) AS metadata
+            FROM dag_modifications dm
+            LEFT JOIN users u ON u.id = dm.author_id
+            WHERE dm.repo_id = $1 AND dm.event_type = ANY(ARRAY['merge', 'sync', 'branch_create', 'branch_delete'])
+         ) sync_events
+         ORDER BY created_at DESC
+         LIMIT 30",
+    )
+    .bind(repo_id)
+    .fetch_all(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to load sync logs for '{}': {}", repo_id, error))?;
+
+    let logs = log_rows
+        .into_iter()
+        .map(|row| SyncMonitorLogItem {
+            source: row.get::<String, _>("source"),
+            action: row.get::<String, _>("action"),
+            severity: row.get::<String, _>("severity"),
+            message: row.get::<String, _>("message"),
+            branch_name: row.get::<Option<String>, _>("branch_name"),
+            commit_hash: row.get::<Option<String>, _>("commit_hash"),
+            created_at: row.get::<String, _>("created_at"),
+            actor: row
+                .get::<Option<String>, _>("actor_id")
+                .map(|id| UserSummary {
+                    id,
+                    username: row.get::<Option<String>, _>("username"),
+                    email: row.get::<Option<String>, _>("email"),
+                }),
+            metadata: row.get::<serde_json::Value, _>("metadata"),
+        })
+        .collect();
+
+    let anomaly_rows = sqlx::query(
+        "SELECT
+            CASE severity
+                WHEN 'danger' THEN 'Critical'
+                WHEN 'warning' THEN 'Warn'
+                ELSE 'Info'
+            END AS level,
+            message,
+            event_type,
+            branch_name,
+            commit_hash,
+            created_at::text AS created_at,
+            COALESCE(metadata, '{}'::jsonb) AS metadata
+         FROM dag_modifications
+         WHERE repo_id = $1
+         ORDER BY
+            CASE severity WHEN 'danger' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
+            created_at DESC
+         LIMIT 12",
+    )
+    .bind(repo_id)
+    .fetch_all(&client.pool)
+    .await
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to load sync anomalies for '{}': {}",
+            repo_id, error
+        )
+    })?;
+
+    let anomalies = anomaly_rows
+        .into_iter()
+        .map(|row| SyncAnomalyItem {
+            level: row.get::<String, _>("level"),
+            message: row.get::<String, _>("message"),
+            event_type: row.get::<String, _>("event_type"),
+            branch_name: row.get::<Option<String>, _>("branch_name"),
+            commit_hash: row.get::<Option<String>, _>("commit_hash"),
+            created_at: row.get::<String, _>("created_at"),
+            metadata: row.get::<serde_json::Value, _>("metadata"),
+        })
+        .collect();
+
+    let propagation_rows = sqlx::query(
+        "SELECT
+            date_trunc('day', created_at)::text AS bucket_start,
+            COUNT(*) FILTER (WHERE severity = 'warning')::bigint AS warn_count,
+            COUNT(*) FILTER (WHERE severity = 'danger')::bigint AS critical_count,
+            COUNT(*) FILTER (WHERE severity NOT IN ('warning', 'danger'))::bigint AS info_count,
+            COUNT(*)::bigint AS total_count
+         FROM dag_modifications
+         WHERE repo_id = $1
+         GROUP BY date_trunc('day', created_at)
+         HAVING COUNT(*) FILTER (WHERE severity IN ('warning', 'danger')) > 0
+         ORDER BY date_trunc('day', created_at) DESC
+         LIMIT 14",
+    )
+    .bind(repo_id)
+    .fetch_all(&client.pool)
+    .await
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to load failure propagation for '{}': {}",
+            repo_id, error
+        )
+    })?;
+
+    let mut failure_propagation: Vec<FailurePropagationBucket> = propagation_rows
+        .into_iter()
+        .map(|row| FailurePropagationBucket {
+            bucket_start: row.get::<String, _>("bucket_start"),
+            warn_count: row.get::<i64, _>("warn_count"),
+            critical_count: row.get::<i64, _>("critical_count"),
+            info_count: row.get::<i64, _>("info_count"),
+            total_count: row.get::<i64, _>("total_count"),
+        })
+        .collect();
+    failure_propagation.reverse();
+
+    let counts_row = sqlx::query(
+        "SELECT
+            (SELECT COUNT(*) FROM repo_access_logs WHERE repo_id = $1 AND action = 'push')::bigint AS push_count,
+            (SELECT COUNT(*) FROM repo_access_logs WHERE repo_id = $1 AND action = 'pull')::bigint AS pull_count,
+            (
+                (SELECT COUNT(*) FROM repo_access_logs WHERE repo_id = $1 AND action = 'merge') +
+                (SELECT COUNT(*) FROM dag_modifications WHERE repo_id = $1 AND event_type = 'merge')
+            )::bigint AS merge_count,
+            (
+                (SELECT COUNT(*) FROM repo_access_logs WHERE repo_id = $1 AND action IN ('sync', 'sync-db')) +
+                (SELECT COUNT(*) FROM dag_modifications WHERE repo_id = $1 AND event_type = 'sync')
+            )::bigint AS sync_count",
+    )
+    .bind(repo_id)
+    .fetch_one(&client.pool)
+    .await
+    .map_err(|error| {
+        format!(
+            "[ERROR] Failed to load sync action counts for '{}': {}",
+            repo_id, error
+        )
+    })?;
+
+    Ok(SyncMonitorResponse {
+        repo_id: repo_id.to_string(),
+        logs,
+        anomalies,
+        failure_propagation,
+        action_counts: SyncActionCounts {
+            push_count: counts_row.get::<i64, _>("push_count"),
+            pull_count: counts_row.get::<i64, _>("pull_count"),
+            merge_count: counts_row.get::<i64, _>("merge_count"),
+            sync_count: counts_row.get::<i64, _>("sync_count"),
+        },
     })
 }
 

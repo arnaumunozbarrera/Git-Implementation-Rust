@@ -218,49 +218,7 @@ pub async fn delete_repo(
         ));
     }
 
-    sqlx::query("DELETE FROM stars WHERE repo_id = $1")
-        .bind(repo_id)
-        .execute(&client.pool)
-        .await
-        .map_err(|error| {
-            format!(
-                "[ERROR] Failed to delete stars for '{}': {}",
-                repo_id, error
-            )
-        })?;
-
-    sqlx::query("DELETE FROM repo_access_logs WHERE repo_id = $1")
-        .bind(repo_id)
-        .execute(&client.pool)
-        .await
-        .map_err(|error| {
-            format!(
-                "[ERROR] Failed to delete access logs for '{}': {}",
-                repo_id, error
-            )
-        })?;
-
-    sqlx::query("DELETE FROM commits_metadata WHERE repo_id = $1")
-        .bind(repo_id)
-        .execute(&client.pool)
-        .await
-        .map_err(|error| {
-            format!(
-                "[ERROR] Failed to delete commit metadata for '{}': {}",
-                repo_id, error
-            )
-        })?;
-
-    sqlx::query("DELETE FROM branches WHERE repo_id = $1")
-        .bind(repo_id)
-        .execute(&client.pool)
-        .await
-        .map_err(|error| {
-            format!(
-                "[ERROR] Failed to delete branches for '{}': {}",
-                repo_id, error
-            )
-        })?;
+    delete_repository_records(client, repo_id).await?;
 
     let result = sqlx::query("DELETE FROM repositories WHERE id = $1 AND owner_id = $2")
         .bind(repo_id)
@@ -285,6 +243,71 @@ pub async fn delete_repo(
             repo_id
         )),
     })
+}
+
+pub async fn delete_repository_records(
+    client: &SupabaseClient,
+    repo_id: &str,
+) -> Result<(), String> {
+    let cleanup_statements = [
+        (
+            "branch commit memberships",
+            "DELETE FROM branch_commit_memberships WHERE repo_id = $1",
+        ),
+        (
+            "branch metrics",
+            "DELETE FROM branch_metrics WHERE repo_id = $1",
+        ),
+        (
+            "branch topology metrics",
+            "DELETE FROM branch_topology_metrics WHERE repo_id = $1",
+        ),
+        (
+            "pull requests",
+            "DELETE FROM pull_requests WHERE repo_id = $1",
+        ),
+        (
+            "DAG modifications",
+            "DELETE FROM dag_modifications WHERE repo_id = $1",
+        ),
+        (
+            "repository DAG metrics",
+            "DELETE FROM repository_dag_metrics WHERE repo_id = $1",
+        ),
+        (
+            "timeline aggregation",
+            "DELETE FROM timeline_aggregation WHERE repo_id = $1",
+        ),
+        ("stars", "DELETE FROM stars WHERE repo_id = $1"),
+        (
+            "access logs",
+            "DELETE FROM repo_access_logs WHERE repo_id = $1",
+        ),
+        (
+            "commit metadata",
+            "DELETE FROM commits_metadata WHERE repo_id = $1",
+        ),
+        (
+            "commit edges",
+            "DELETE FROM commit_edges WHERE repo_id = $1",
+        ),
+        ("branches", "DELETE FROM branches WHERE repo_id = $1"),
+    ];
+
+    for (label, statement) in cleanup_statements {
+        sqlx::query(statement)
+            .bind(repo_id)
+            .execute(&client.pool)
+            .await
+            .map_err(|error| {
+                format!(
+                    "[ERROR] Failed to delete {} for '{}': {}",
+                    label, repo_id, error
+                )
+            })?;
+    }
+
+    Ok(())
 }
 
 pub async fn clone_repo_to_desktop(
@@ -397,7 +420,9 @@ pub async fn clone_repo_to_desktop(
         b".env\n\n.voor/\n/.voor/\n\nCargo.lock\nCargo.toml",
     )?;
 
-    if let Err(error) = materialize_all_remote_branch_objects(client, repo_id, &target, &branches).await {
+    if let Err(error) =
+        materialize_all_remote_branch_objects(client, repo_id, &target, &branches).await
+    {
         if !hydrated_objects {
             return Err(error);
         }
@@ -432,8 +457,13 @@ pub async fn force_reclone_repo_to_desktop(
     let canonical_desktop = fs::canonicalize(&desktop)
         .map_err(|error| format!("[ERROR] Unable to inspect Desktop path: {}", error))?;
     if target.exists() {
-        let canonical_target = fs::canonicalize(&target)
-            .map_err(|error| format!("[ERROR] Unable to inspect '{}': {}", target.display(), error))?;
+        let canonical_target = fs::canonicalize(&target).map_err(|error| {
+            format!(
+                "[ERROR] Unable to inspect '{}': {}",
+                target.display(),
+                error
+            )
+        })?;
         if !canonical_target.starts_with(&canonical_desktop) {
             return Err(format!(
                 "[ERROR] Refusing to overwrite '{}' because it is outside Desktop",
@@ -451,8 +481,9 @@ pub async fn force_reclone_repo_to_desktop(
     }
 
     if target.exists() {
-        fs::remove_dir_all(&target)
-            .map_err(|error| format!("[ERROR] Unable to clear '{}': {}", target.display(), error))?;
+        fs::remove_dir_all(&target).map_err(|error| {
+            format!("[ERROR] Unable to clear '{}': {}", target.display(), error)
+        })?;
     }
 
     create_repo_layout(&target)?;
@@ -470,7 +501,11 @@ pub async fn force_reclone_repo_to_desktop(
             .get::<Option<String>, _>("last_commit_hash")
             .unwrap_or_default();
         write_file(
-            &target.join(".voor").join("refs").join("heads").join(branch_name),
+            &target
+                .join(".voor")
+                .join("refs")
+                .join("heads")
+                .join(branch_name),
             head.as_bytes(),
         )?;
     }
@@ -489,7 +524,9 @@ pub async fn force_reclone_repo_to_desktop(
         &target.join(".voor").join("config"),
         format!(
             "[remote \"origin\"]\nurl = {}\nrepo_id = {}\nuser_id = {}\n",
-            DEFAULT_REMOTE_URL, repository.id, user_id.trim()
+            DEFAULT_REMOTE_URL,
+            repository.id,
+            user_id.trim()
         )
         .as_bytes(),
     )?;
@@ -642,7 +679,9 @@ async fn materialize_commit_graph_from_database(
         .await
         .map_err(|error| format!("[ERROR] Failed to load commit parents '{}': {}", commit_hash, error))?;
         let mut parents = if edge_parents.is_empty() {
-            row.get::<Option<String>, _>("parent_hash").into_iter().collect()
+            row.get::<Option<String>, _>("parent_hash")
+                .into_iter()
+                .collect()
         } else {
             edge_parents
         };

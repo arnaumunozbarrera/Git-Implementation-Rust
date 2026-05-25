@@ -126,6 +126,10 @@ export async function fetchActivityFeed(repoId, getToken, limit = 10, action) {
   );
 }
 
+export async function fetchSyncMonitor(repoId, getToken) {
+  return fetchWithClerkAuth(`/repos/${encodeURIComponent(repoId)}/sync-monitor`, getToken);
+}
+
 export async function fetchCommitGraph(repoId, refName, getToken, limit = 20) {
   const params = new URLSearchParams({ limit: String(limit) });
   if (refName) {

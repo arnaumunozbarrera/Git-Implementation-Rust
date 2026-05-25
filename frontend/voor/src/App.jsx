@@ -9,6 +9,7 @@ import {
   fetchCommitGraph,
   fetchCommitHistory,
   fetchRepositories,
+  fetchSyncMonitor,
   fetchVcsAnalytics,
   forceRecloneRepositoryToDesktop,
   initRepository,
@@ -187,6 +188,19 @@ const translations = {
         forcePulled: "Local copy overwritten",
         forcePullFailed: "Overwrite failed",
         refresh: "Refresh",
+        remoteLogs: "Remote sync logs",
+        anomalyTitle: "Anomaly detections",
+        propagationTitle: "Failure propagation",
+        noLogs: "No sync logs available",
+        noAnomalies: "No anomaly detections available",
+        noPropagation: "No failure propagation recorded",
+        push: "Push",
+        pull: "Pull",
+        merge: "Merge",
+        sync: "Sync",
+        warn: "Warn",
+        critical: "Critical",
+        info: "Info",
       },
     },
     settings: {
@@ -387,6 +401,19 @@ const translations = {
         forcePulled: "Copia local sobrescrita",
         forcePullFailed: "Fallo la sobrescritura",
         refresh: "Actualizar",
+        remoteLogs: "Registros de sincronizacion remota",
+        anomalyTitle: "Detecciones de anomalias",
+        propagationTitle: "Propagacion de fallos",
+        noLogs: "No hay registros de sincronizacion",
+        noAnomalies: "No hay detecciones de anomalias",
+        noPropagation: "No hay propagacion de fallos registrada",
+        push: "Push",
+        pull: "Pull",
+        merge: "Merge",
+        sync: "Sync",
+        warn: "Aviso",
+        critical: "Critico",
+        info: "Info",
       },
     },
     settings: {
@@ -1085,6 +1112,7 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
           <SyncMonitorPage
             cloneStatus={cloneStatus}
             forcePullStatus={forcePullStatus}
+            getToken={getToken}
             onClone={handleCloneActiveRepository}
             onForcePull={handleForcePullActiveRepository}
             onRefresh={loadRepositories}
@@ -2206,6 +2234,7 @@ function BranchesPage({ branch, branches, branchName, getToken, onSelectBranch, 
 function SyncMonitorPage({
   cloneStatus,
   forcePullStatus,
+  getToken,
   onClone,
   onForcePull,
   onRefresh,
@@ -2215,6 +2244,39 @@ function SyncMonitorPage({
 }) {
   const isCloning = cloneStatus.status === "loading" && cloneStatus.repoId === repository?.id;
   const isForcePulling = forcePullStatus.status === "loading" && forcePullStatus.repoId === repository?.id;
+  const [monitorState, setMonitorState] = useState({
+    status: "idle",
+    data: null,
+  });
+
+  useEffect(() => {
+    let active = true;
+
+    if (!repository?.id) {
+      setMonitorState({ status: "empty", data: null });
+      return () => {
+        active = false;
+      };
+    }
+
+    setMonitorState({ status: "loading", data: null });
+    fetchSyncMonitor(repository.id, getToken)
+      .then((data) => {
+        if (active) {
+          setMonitorState({ status: "ready", data });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setMonitorState({ status: "unavailable", data: null });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [getToken, repository?.id]);
+
   const statusText = isCloning
     ? page.cloning
     : cloneStatus.status === "ready" && cloneStatus.repoId === repository?.id
@@ -2243,6 +2305,7 @@ function SyncMonitorPage({
           <span>{repository?.default_branch || ""}</span>
         </header>
         <div className="settings-panel-body">
+          <SyncActionSummary counts={monitorState.data?.action_counts} page={page} />
           <div className="danger-action-row">
             <div>
               <strong>{page.cloneDesktop}</strong>
@@ -2278,8 +2341,145 @@ function SyncMonitorPage({
           </div>
         </div>
       </div>
+      <div className="sync-dashboard-grid">
+        <SyncLogsPanel isLoading={monitorState.status === "loading"} logs={monitorState.data?.logs} page={page} />
+        <SyncAnomaliesPanel anomalies={monitorState.data?.anomalies} isLoading={monitorState.status === "loading"} page={page} />
+        <FailurePropagationPanel buckets={monitorState.data?.failure_propagation} isLoading={monitorState.status === "loading"} page={page} />
+      </div>
     </section>
   );
+}
+
+function SyncActionSummary({ counts, page }) {
+  const items = [
+    { key: "push_count", label: page.push, icon: "upload" },
+    { key: "pull_count", label: page.pull, icon: "download" },
+    { key: "merge_count", label: page.merge, icon: "merge_type" },
+    { key: "sync_count", label: page.sync, icon: "sync" },
+  ];
+
+  return (
+    <div className="sync-action-summary" aria-label={page.title}>
+      {items.map((item) => (
+        <div className="sync-action-tile" key={item.key}>
+          <span className="material-symbols-outlined" aria-hidden="true">{item.icon}</span>
+          <strong>{compactNumber(counts?.[item.key] ?? 0)}</strong>
+          <small>{item.label}</small>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SyncLogsPanel({ isLoading, logs, page }) {
+  const items = Array.isArray(logs) ? logs : [];
+
+  return (
+    <section className="sync-panel sync-logs-panel">
+      <header className="activity-panel-header">
+        <h2>{page.remoteLogs}</h2>
+      </header>
+      {items.length > 0 ? (
+        <div className="sync-log-list">
+          {items.slice(0, 10).map((item, index) => (
+            <article className="sync-log-row" key={`${item.source}-${item.created_at}-${index}`}>
+              <span className={`sync-severity sync-severity-${normalizeSeverity(item.severity)}`}>{severityLabel(item.severity, page)}</span>
+              <div>
+                <strong>{item.message}</strong>
+                <span>{[item.action, item.branch_name, item.commit_hash?.slice(0, 10)].filter(Boolean).join(" · ")}</span>
+              </div>
+              <time dateTime={item.created_at}>{formatDateTime(item.created_at)}</time>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="activity-panel-empty">{isLoading ? page.cloning : page.noLogs}</p>
+      )}
+    </section>
+  );
+}
+
+function SyncAnomaliesPanel({ anomalies, isLoading, page }) {
+  const items = Array.isArray(anomalies) ? anomalies : [];
+
+  return (
+    <section className="sync-panel">
+      <header className="activity-panel-header">
+        <h2>{page.anomalyTitle}</h2>
+      </header>
+      {items.length > 0 ? (
+        <div className="sync-anomaly-list">
+          {items.slice(0, 6).map((item, index) => (
+            <article className="sync-anomaly-row" key={`${item.created_at}-${index}`}>
+              <span className={`sync-severity sync-severity-${normalizeSeverity(item.level)}`}>{severityLabel(item.level, page)}</span>
+              <div>
+                <strong>{item.message}</strong>
+                <span>{[item.event_type, item.branch_name, formatDateTime(item.created_at)].filter(Boolean).join(" · ")}</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="activity-panel-empty">{isLoading ? page.cloning : page.noAnomalies}</p>
+      )}
+    </section>
+  );
+}
+
+function FailurePropagationPanel({ buckets, isLoading, page }) {
+  const items = Array.isArray(buckets) ? buckets : [];
+  const max = Math.max(...items.map((item) => Number(item.total_count) || 0), 1);
+
+  return (
+    <section className="sync-panel failure-propagation-panel">
+      <header className="activity-panel-header">
+        <h2>{page.propagationTitle}</h2>
+      </header>
+      {items.length > 0 ? (
+        <div className="failure-bars" aria-label={page.propagationTitle}>
+          {items.map((item) => {
+            const total = Number(item.total_count) || 0;
+            const critical = Number(item.critical_count) || 0;
+            const warn = Number(item.warn_count) || 0;
+            return (
+              <div className="failure-bar-row" key={item.bucket_start}>
+                <time dateTime={item.bucket_start}>{formatDateOnly(item.bucket_start)}</time>
+                <span className="failure-bar-track" aria-hidden="true">
+                  <i className="failure-critical" style={{ width: `${(critical / max) * 100}%` }} />
+                  <i className="failure-warn" style={{ width: `${(warn / max) * 100}%` }} />
+                </span>
+                <strong>{compactNumber(total)}</strong>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="activity-panel-empty">{isLoading ? page.cloning : page.noPropagation}</p>
+      )}
+    </section>
+  );
+}
+
+function normalizeSeverity(value) {
+  const normalized = String(value || "info").toLowerCase();
+  if (normalized === "critical" || normalized === "danger") {
+    return "critical";
+  }
+  if (normalized === "warn" || normalized === "warning") {
+    return "warn";
+  }
+  return "info";
+}
+
+function severityLabel(value, page) {
+  const normalized = normalizeSeverity(value);
+  if (normalized === "critical") {
+    return page.critical;
+  }
+  if (normalized === "warn") {
+    return page.warn;
+  }
+  return page.info;
 }
 
 function EmptySection({ page }) {

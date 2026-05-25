@@ -2249,6 +2249,183 @@ button {
   line-height: 24px;
 }
 
+.sync-action-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sync-action-tile {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--canvas);
+  padding: 12px;
+}
+
+.sync-action-tile .material-symbols-outlined {
+  color: var(--primary-strong);
+  font-size: 20px;
+}
+
+.sync-action-tile strong {
+  color: var(--text);
+  font-size: 22px;
+  line-height: 28px;
+}
+
+.sync-action-tile small {
+  color: var(--outline);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+
+.sync-dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(300px, 2fr);
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.sync-panel {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+.sync-logs-panel,
+.failure-propagation-panel {
+  grid-column: 1 / -1;
+}
+
+.sync-log-list,
+.sync-anomaly-list {
+  display: grid;
+}
+
+.sync-log-row,
+.sync-anomaly-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  padding: 12px 14px;
+}
+
+.sync-anomaly-row {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.sync-log-row:last-child,
+.sync-anomaly-row:last-child {
+  border-bottom: 0;
+}
+
+.sync-log-row strong,
+.sync-anomaly-row strong {
+  display: block;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-log-row span:not(.sync-severity),
+.sync-anomaly-row span:not(.sync-severity),
+.sync-log-row time {
+  overflow: hidden;
+  color: var(--outline);
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-severity {
+  min-width: 64px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 16px;
+  padding: 3px 6px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.sync-severity-info {
+  border-color: rgb(88 166 255 / 40%);
+  background: rgb(88 166 255 / 12%);
+  color: var(--primary-strong);
+}
+
+.sync-severity-warn {
+  border-color: rgb(255 186 66 / 45%);
+  background: rgb(218 150 0 / 16%);
+  color: var(--warning);
+}
+
+.sync-severity-critical {
+  border-color: rgb(255 123 114 / 45%);
+  background: rgb(248 81 73 / 14%);
+  color: var(--error);
+}
+
+.failure-bars {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.failure-bar-row {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr) 48px;
+  align-items: center;
+  gap: 12px;
+}
+
+.failure-bar-row time,
+.failure-bar-row strong {
+  color: var(--outline);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.failure-bar-row strong {
+  color: var(--text);
+  text-align: right;
+}
+
+.failure-bar-track {
+  display: flex;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--canvas);
+}
+
+.failure-bar-track i {
+  display: block;
+  min-width: 2px;
+  height: 100%;
+}
+
+.failure-critical {
+  background: var(--error);
+}
+
+.failure-warn {
+  background: var(--warning);
+}
+
 .ratio-track {
   height: 4px;
   margin: 0 16px 16px;
@@ -2928,6 +3105,21 @@ button {
 
   .activity-dashboard-grid {
     grid-template-columns: 1fr;
+  }
+
+  .sync-dashboard-grid,
+  .sync-action-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .sync-log-row,
+  .failure-bar-row {
+    grid-template-columns: 1fr;
+  }
+
+  .sync-log-row time,
+  .failure-bar-row strong {
+    text-align: left;
   }
 
   .commit-frequency-panel,

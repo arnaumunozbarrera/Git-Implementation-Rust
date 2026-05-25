@@ -9,7 +9,7 @@ use crate::api::auth::{self, AuthenticatedUser};
 use crate::api::models::{
     ActivityFeedQuery, AnalyticsOverviewResponse, CommitGraphQuery, CommitGraphResponse,
     CommitHistoryQuery, CommitSummary, ContentsResponse, FileContentResponse, PaginationResponse,
-    RepoDashboardResponse, RepoPathQuery, VcsAnalyticsResponse,
+    RepoDashboardResponse, RepoPathQuery, SyncMonitorResponse, VcsAnalyticsResponse,
 };
 use crate::api::services::frontend_service;
 use crate::utils::service_monitor::LogLevel;
@@ -163,6 +163,20 @@ pub async fn get_vcs_analytics(
     ensure_authenticated_user(&state, client, &user).await?;
 
     frontend_service::get_vcs_analytics(client, &repo_id)
+        .await
+        .map(Json)
+        .map_err(classify_error)
+}
+
+pub async fn get_sync_monitor(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(repo_id): Path<String>,
+) -> Result<Json<SyncMonitorResponse>, (StatusCode, String)> {
+    let client = require_client(&state)?;
+    ensure_authenticated_user(&state, client, &user).await?;
+
+    frontend_service::get_sync_monitor(client, &repo_id)
         .await
         .map(Json)
         .map_err(classify_error)

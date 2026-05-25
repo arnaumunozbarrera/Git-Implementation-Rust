@@ -260,6 +260,56 @@ pub struct TopModifiedFile {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct SyncMonitorLogItem {
+    pub source: String,
+    pub action: String,
+    pub severity: String,
+    pub message: String,
+    pub branch_name: Option<String>,
+    pub commit_hash: Option<String>,
+    pub created_at: String,
+    pub actor: Option<UserSummary>,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SyncAnomalyItem {
+    pub level: String,
+    pub message: String,
+    pub event_type: String,
+    pub branch_name: Option<String>,
+    pub commit_hash: Option<String>,
+    pub created_at: String,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FailurePropagationBucket {
+    pub bucket_start: String,
+    pub warn_count: i64,
+    pub critical_count: i64,
+    pub info_count: i64,
+    pub total_count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SyncActionCounts {
+    pub push_count: i64,
+    pub pull_count: i64,
+    pub merge_count: i64,
+    pub sync_count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SyncMonitorResponse {
+    pub repo_id: String,
+    pub logs: Vec<SyncMonitorLogItem>,
+    pub anomalies: Vec<SyncAnomalyItem>,
+    pub failure_propagation: Vec<FailurePropagationBucket>,
+    pub action_counts: SyncActionCounts,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct VcsAnalyticsResponse {
     pub repo_id: String,
     pub default_branch: String,
