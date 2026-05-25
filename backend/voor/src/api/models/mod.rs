@@ -17,15 +17,19 @@ pub use branches::Branch;
 pub use commits::Commit;
 pub use commits_metadata::CommitMetadata;
 pub use frontend::{
-    ActivityFeedItem, ActivityFeedQuery, AnalyticsOverviewResponse, BranchCommitDistributionItem, CommitGraphNode,
-    CommitGraphQuery, CommitGraphResponse, CommitHistoryQuery, CommitSummary, ContentEntry,
-    ContentsResponse, DashboardActivitySummary, FileContentResponse,
-    PaginationResponse, ReadmePreview, RepoDashboardResponse, RepoPathQuery, RepositoryFileSummary,
-    RepositoryStorageSummary, UserSummary, VcsAnalyticsResponse, VcsBranchAnalytics,
-    VcsTimelineBucket, VcsTopologyCacheItem,
+    ActivityFeedItem, ActivityFeedQuery, AnalyticsOverviewResponse, BranchCommitDistributionItem,
+    CommitGraphNode, CommitGraphQuery, CommitGraphResponse, CommitHistoryQuery, CommitSummary,
+    ContentEntry, ContentsResponse, DashboardActivitySummary, FailurePropagationBucket,
+    FileContentResponse, PaginationResponse, ReadmePreview, RepoDashboardResponse, RepoPathQuery,
+    RepositoryDagMetricsResponse, RepositoryFileSummary, RepositoryStorageSummary,
+    SyncActionCounts, SyncAnomalyItem, SyncMonitorLogItem, SyncMonitorResponse, TopModifiedFile,
+    UserSummary, VcsAnalyticsResponse, VcsBranchAnalytics, VcsTimelineBucket, VcsTopologyCacheItem,
 };
 pub use repo_access_logs::RepoAccessLog;
-pub use repositories::{CloneRepoRequest, CloneRepoResponse, DeleteActionResponse, InitRepoRequest, InitRepoResponse, Repository};
+pub use repositories::{
+    CloneRepoRequest, CloneRepoResponse, DeleteActionResponse, ForceRecloneRequest,
+    InitRepoRequest, InitRepoResponse, Repository,
+};
 pub use stars::Star;
 pub use tree_entries::TreeEntry;
 pub use trees::Tree;

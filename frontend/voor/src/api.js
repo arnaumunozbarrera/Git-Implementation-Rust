@@ -61,6 +61,13 @@ export async function cloneRepositoryToDesktop(repoId, payload, getToken) {
   });
 }
 
+export async function forceRecloneRepositoryToDesktop(repoId, payload, getToken) {
+  return fetchWithClerkAuth(`/repos/${encodeURIComponent(repoId)}/force-reclone-desktop`, getToken, {
+    method: "POST",
+    body: JSON.stringify(payload ?? {}),
+  });
+}
+
 export async function fetchBranches(repoId, getToken) {
   return fetchWithClerkAuth(`/repos/${encodeURIComponent(repoId)}/branches`, getToken);
 }
@@ -103,6 +110,10 @@ export async function fetchVcsAnalytics(repoId, getToken) {
   return fetchWithClerkAuth(`/repos/${encodeURIComponent(repoId)}/analytics/vcs`, getToken);
 }
 
+export async function fetchBranchAnalytics(repoId, getToken) {
+  return fetchWithClerkAuth(`/repos/${encodeURIComponent(repoId)}/branches/analytics`, getToken);
+}
+
 export async function fetchActivityFeed(repoId, getToken, limit = 10, action) {
   const params = new URLSearchParams({ limit: String(limit), offset: "0" });
   if (action) {
@@ -113,6 +124,10 @@ export async function fetchActivityFeed(repoId, getToken, limit = 10, action) {
     `/repos/${encodeURIComponent(repoId)}/activity?${params.toString()}`,
     getToken,
   );
+}
+
+export async function fetchSyncMonitor(repoId, getToken) {
+  return fetchWithClerkAuth(`/repos/${encodeURIComponent(repoId)}/sync-monitor`, getToken);
 }
 
 export async function fetchCommitGraph(repoId, refName, getToken, limit = 20) {

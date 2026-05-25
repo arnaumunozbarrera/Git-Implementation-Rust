@@ -42,6 +42,7 @@ enum Commands {
     InitRemote(InitRemoteArgs),
     Push(BranchTargetArgs),
     Pull(BranchTargetArgs),
+    Sync(BranchTargetArgs),
     SyncDb(BranchTargetArgs),
     Serve,
 }
@@ -216,7 +217,9 @@ fn main() {
                 .unwrap_or_else(cli::branch::get_current_branch);
             cli::remote_server::pull_branch(&branch_name);
         }
-        Commands::SyncDb(args) => cli::remote_server::sync_db(args.branch_name.as_deref()),
+        Commands::Sync(args) | Commands::SyncDb(args) => {
+            cli::remote_server::sync_db(args.branch_name.as_deref())
+        }
         Commands::Serve => {
             let runtime = tokio::runtime::Runtime::new().unwrap();
             runtime.block_on(api::api::api());
@@ -225,7 +228,10 @@ fn main() {
 }
 
 fn requires_repository(command: &Commands) -> bool {
-    !matches!(command, Commands::Init | Commands::Serve | Commands::Login(_) | Commands::Logout)
+    !matches!(
+        command,
+        Commands::Init | Commands::Serve | Commands::Login(_) | Commands::Logout
+    )
 }
 
 fn resolve_user_path(path: &str, invocation_dir: Option<&Path>) -> String {

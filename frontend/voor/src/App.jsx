@@ -9,6 +9,9 @@ import {
   fetchCommitGraph,
   fetchCommitHistory,
   fetchRepositories,
+  fetchSyncMonitor,
+  fetchVcsAnalytics,
+  forceRecloneRepositoryToDesktop,
   initRepository,
   updateAccountProfile,
 } from "./api.js";
@@ -136,7 +139,26 @@ const translations = {
       activity: {
         eyebrow: "Repository Events",
         title: "Activity",
-        description: "This workspace is reserved for commit and access activity streams.",
+        description: "Commit velocity, contribution density, code churn, and file change concentration.",
+        frequency: "Commit Frequency",
+        range: "Last 30 Days",
+        heatmap: "Contribution Heatmap",
+        additionsDeletions: "Additions vs Deletions",
+        topFiles: "Top Modified Files",
+        less: "Less",
+        more: "More",
+        additions: "Additions",
+        deletions: "Deletions",
+        filePath: "File Path",
+        changePercent: "Change %",
+        commits: "Commits",
+        contributions: "contributions",
+        storageGained: "Storage gained",
+        storageLost: "Storage lost",
+        storageConsumed: "Storage consumed",
+        storageRecovered: "Storage recovered",
+        loading: "Loading activity...",
+        noData: "No activity data available",
       },
       branches: {
         eyebrow: "Version Graph",
@@ -155,6 +177,30 @@ const translations = {
         eyebrow: "Remote Operations",
         title: "Sync Monitor",
         description: "This workspace is reserved for push, pull, and database sync telemetry.",
+        cloneDesktop: "Clone to Desktop",
+        cloneReady: "Clone the selected remote repository to Desktop with the latest default branch content.",
+        cloning: "Cloning...",
+        cloned: "Repository cloned",
+        cloneFailed: "Clone failed",
+        forcePull: "Overwrite local copy",
+        forcePullReady: "Replace the local Desktop repository with every remote branch and the default branch working tree.",
+        forcePulling: "Overwriting...",
+        forcePulled: "Local copy overwritten",
+        forcePullFailed: "Overwrite failed",
+        refresh: "Refresh",
+        remoteLogs: "Remote sync logs",
+        anomalyTitle: "Anomaly detections",
+        propagationTitle: "Failure propagation",
+        noLogs: "No sync logs available",
+        noAnomalies: "No anomaly detections available",
+        noPropagation: "No failure propagation recorded",
+        push: "Push",
+        pull: "Pull",
+        merge: "Merge",
+        sync: "Sync",
+        warn: "Warn",
+        critical: "Critical",
+        info: "Info",
       },
     },
     settings: {
@@ -172,6 +218,10 @@ const translations = {
       displayName: "Display name",
       username: "Username",
       email: "Email",
+      alertsEyebrow: "Push Alerts",
+      alertsTitle: "Push Action Alerts",
+      pushAlertSenderEmail: "Sender email",
+      pushAlertSenderHelp: "Email address used as the sender for push action alert messages.",
       save: "Save Settings",
       saved: "Settings saved",
       profileSaved: "Profile saved",
@@ -306,7 +356,26 @@ const translations = {
       activity: {
         eyebrow: "Eventos del repositorio",
         title: "Actividad",
-        description: "Este espacio esta reservado para commits y flujos de actividad de acceso.",
+        description: "Frecuencia de commits, densidad de contribuciones, cambios de codigo y archivos mas activos.",
+        frequency: "Frecuencia de commits",
+        range: "Ultimos 30 dias",
+        heatmap: "Mapa de contribuciones",
+        additionsDeletions: "Adiciones vs eliminaciones",
+        topFiles: "Archivos mas modificados",
+        less: "Menos",
+        more: "Mas",
+        additions: "Adiciones",
+        deletions: "Eliminaciones",
+        filePath: "Ruta del archivo",
+        changePercent: "Cambio %",
+        commits: "Commits",
+        contributions: "contribuciones",
+        storageGained: "Espacio ganado",
+        storageLost: "Espacio perdido",
+        storageConsumed: "Espacio consumido",
+        storageRecovered: "Espacio recuperado",
+        loading: "Cargando actividad...",
+        noData: "No hay datos de actividad disponibles",
       },
       branches: {
         eyebrow: "Grafo de versiones",
@@ -325,6 +394,30 @@ const translations = {
         eyebrow: "Operaciones remotas",
         title: "Monitor de sincronizacion",
         description: "Este espacio esta reservado para telemetria de push, pull y sincronizacion de base de datos.",
+        cloneDesktop: "Clonar al escritorio",
+        cloneReady: "Clona el repositorio remoto seleccionado al escritorio con el ultimo contenido de la rama principal.",
+        cloning: "Clonando...",
+        cloned: "Repositorio clonado",
+        cloneFailed: "Fallo la clonacion",
+        forcePull: "Sobrescribir copia local",
+        forcePullReady: "Reemplaza el repositorio local del escritorio con todas las ramas remotas y el arbol de trabajo de la rama principal.",
+        forcePulling: "Sobrescribiendo...",
+        forcePulled: "Copia local sobrescrita",
+        forcePullFailed: "Fallo la sobrescritura",
+        refresh: "Actualizar",
+        remoteLogs: "Registros de sincronizacion remota",
+        anomalyTitle: "Detecciones de anomalias",
+        propagationTitle: "Propagacion de fallos",
+        noLogs: "No hay registros de sincronizacion",
+        noAnomalies: "No hay detecciones de anomalias",
+        noPropagation: "No hay propagacion de fallos registrada",
+        push: "Push",
+        pull: "Pull",
+        merge: "Merge",
+        sync: "Sync",
+        warn: "Aviso",
+        critical: "Critico",
+        info: "Info",
       },
     },
     settings: {
@@ -342,6 +435,10 @@ const translations = {
       displayName: "Nombre visible",
       username: "Usuario",
       email: "Correo electronico",
+      alertsEyebrow: "Alertas push",
+      alertsTitle: "Alertas de acciones push",
+      pushAlertSenderEmail: "Correo remitente",
+      pushAlertSenderHelp: "Direccion de correo usada como remitente en las alertas de acciones push.",
       save: "Guardar ajustes",
       saved: "Ajustes guardados",
       profileSaved: "Perfil guardado",
@@ -371,6 +468,7 @@ const settingsDefaults = {
   displayName: "",
   username: "",
   email: "",
+  pushAlertSenderEmail: "",
 };
 
 let cliLoginAttemptStarted = false;
@@ -432,6 +530,16 @@ function visibilityFromRepository(repo) {
   }
 
   return repo.is_private ? "private" : "public";
+}
+
+function sortRepositoriesByCreation(repositories) {
+  return [...repositories].sort((left, right) => {
+    const leftTime = new Date(left?.created_at ?? 0).getTime();
+    const rightTime = new Date(right?.created_at ?? 0).getTime();
+    const normalizedLeft = Number.isNaN(leftTime) ? 0 : leftTime;
+    const normalizedRight = Number.isNaN(rightTime) ? 0 : rightTime;
+    return normalizedLeft - normalizedRight;
+  });
 }
 
 function repositoryIdFromName(name) {
@@ -577,6 +685,8 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   const [deleteConfirmRepo, setDeleteConfirmRepo] = useState(null);
   const [deleteNotice, setDeleteNotice] = useState(null);
   const [cloneNotice, setCloneNotice] = useState(null);
+  const [cloneStatus, setCloneStatus] = useState({ status: "idle", repoId: "", message: "" });
+  const [forcePullStatus, setForcePullStatus] = useState({ status: "idle", repoId: "", message: "" });
   const [repositoryState, setRepositoryState] = useState({
     status: "loading",
     repositories: [],
@@ -613,7 +723,7 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
     setRepositoryState({ status: "loading", repositories: [], error: null });
     fetchRepositories(getToken)
       .then((repositories) => {
-        const normalizedRepositories = Array.isArray(repositories) ? repositories : [];
+        const normalizedRepositories = sortRepositoriesByCreation(Array.isArray(repositories) ? repositories : []);
         setRepositoryState({
           status: "ready",
           repositories: normalizedRepositories,
@@ -811,10 +921,69 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
         isPrivate: true,
       });
       loadRepositories();
-      setSelectedRepositoryId(repoId);
       setSaveStatus((current) => current || copy.repository.created);
     } catch {
       setCreateRepoStatus("error");
+    }
+  };
+
+  const handleCloneActiveRepository = async () => {
+    if (!activeRepository || cloneStatus.status === "loading") {
+      return;
+    }
+
+    setCloneStatus({ status: "loading", repoId: activeRepository.id, message: "" });
+    try {
+      const cloneResponse = await cloneRepositoryToDesktop(
+        activeRepository.id,
+        { default_branch: activeRepository.default_branch || "main" },
+        getToken,
+      );
+      setCloneStatus({
+        status: "ready",
+        repoId: activeRepository.id,
+        message: cloneResponse?.path || "",
+      });
+      setCloneNotice({
+        path: cloneResponse?.path || "",
+        title: copy.pages.sync.cloned,
+        message: copy.repository.clonedMessage,
+      });
+      loadRepositories();
+    } catch (error) {
+      setCloneStatus({
+        status: "error",
+        repoId: activeRepository.id,
+        message: error?.message || copy.pages.sync.cloneFailed,
+      });
+    }
+  };
+
+  const handleForcePullActiveRepository = async () => {
+    if (!activeRepository || forcePullStatus.status === "loading") {
+      return;
+    }
+
+    setForcePullStatus({ status: "loading", repoId: activeRepository.id, message: "" });
+    try {
+      const response = await forceRecloneRepositoryToDesktop(activeRepository.id, {}, getToken);
+      setForcePullStatus({
+        status: "ready",
+        repoId: activeRepository.id,
+        message: response?.path || "",
+      });
+      setCloneNotice({
+        path: response?.path || "",
+        title: copy.pages.sync.forcePulled,
+        message: response?.message || copy.pages.sync.forcePullReady,
+      });
+      loadRepositories();
+    } catch (error) {
+      setForcePullStatus({
+        status: "error",
+        repoId: activeRepository.id,
+        message: error?.message || copy.pages.sync.forcePullFailed,
+      });
     }
   };
 
@@ -941,10 +1110,24 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
           />
         ) : activePage === "overview" ? (
           <OverviewPage getToken={getToken} page={copy.pages.overview} repoId={activeRepository?.id} />
+        ) : activePage === "activity" ? (
+          <ActivityPage getToken={getToken} page={copy.pages.activity} repoId={activeRepository?.id} />
         ) : activePage === "branches" ? (
           <BranchGraph
             getToken={getToken}
             repository={activeRepository}
+          />
+        ) : activePage === "sync" ? (
+          <SyncMonitorPage
+            cloneStatus={cloneStatus}
+            forcePullStatus={forcePullStatus}
+            getToken={getToken}
+            onClone={handleCloneActiveRepository}
+            onForcePull={handleForcePullActiveRepository}
+            onRefresh={loadRepositories}
+            page={copy.pages.sync}
+            repository={activeRepository}
+            repositoryStatus={repositoryState.status}
           />
         ) : (
           <EmptySection page={copy.pages[activePage]} />
@@ -1296,8 +1479,7 @@ function hasOverviewData(data) {
     data &&
       Number.isFinite(Number(data.commits_count)) &&
       Number.isFinite(Number(data.contributors_count)) &&
-      Number.isFinite(Number(data.repository_size_bytes)) &&
-      Number.isFinite(Number(data.object_count)),
+      Number.isFinite(Number(data.repository_size_bytes)),
   );
 }
 
@@ -1357,10 +1539,14 @@ function OverviewPage({ getToken, page, repoId }) {
     };
   }, [getToken, repoId]);
 
-  const data = state.data;
+  const data = state.data ?? {};
   const isReady = state.status === "ready" && hasOverviewData(data);
   const unavailableText = state.status === "loading" ? stats.loading : stats.noData;
   const latestActivity = isReady ? formatRelativeTime(getLatestActivity(data)) : "";
+  const repositorySizeBytes = Number.isFinite(Number(data.repository_size_bytes))
+    ? Number(data.repository_size_bytes)
+    : 0;
+  const objectCount = Number.isFinite(Number(data.object_count)) ? Number(data.object_count) : 0;
 
   return (
     <section className="workspace-section">
@@ -1387,8 +1573,8 @@ function OverviewPage({ getToken, page, repoId }) {
         <OverviewStatCard
           icon="database"
           label={stats.repositorySize}
-          value={isReady ? formatBytes(data.repository_size_bytes) : unavailableText}
-          meta={isReady ? `${compactNumber(data.object_count)} ${stats.objects}` : ""}
+          value={isReady ? formatBytes(repositorySizeBytes) : unavailableText}
+          meta={isReady ? `${compactNumber(objectCount)} ${stats.objects}` : ""}
         />
       </div>
 
@@ -1501,6 +1687,418 @@ function RepositorySignalsPanel({ copy, data, isReady }) {
       )}
     </section>
   );
+}
+
+function ActivityPage({ getToken, page, repoId }) {
+  const [state, setState] = useState({
+    status: "loading",
+    data: null,
+  });
+
+  useEffect(() => {
+    let active = true;
+
+    if (!repoId) {
+      setState({ status: "unavailable", data: null });
+      return () => {
+        active = false;
+      };
+    }
+
+    setState({ status: "loading", data: null });
+    fetchVcsAnalytics(repoId, getToken)
+      .then((data) => {
+        if (active) {
+          setState({ status: "ready", data });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setState({ status: "unavailable", data: null });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [getToken, repoId]);
+
+  const timeline = normalizeActivityTimeline(state.data?.timeline);
+  const topFiles = Array.isArray(state.data?.top_modified_files) ? state.data.top_modified_files : [];
+  const isLoading = state.status === "loading";
+
+  return (
+    <section className="workspace-section">
+      <div className="landing-heading">
+        <p className="label-caps">{page.eyebrow}</p>
+        <h1>{page.title}</h1>
+        <p>{page.description}</p>
+      </div>
+
+      <div className="activity-dashboard-grid">
+        <CommitFrequencyCard copy={page} isLoading={isLoading} timeline={timeline} />
+        <ContributionHeatmapCard copy={page} isLoading={isLoading} timeline={timeline} />
+        <AdditionsDeletionsCard copy={page} isLoading={isLoading} timeline={timeline} />
+        <TopModifiedFilesCard copy={page} files={topFiles} isLoading={isLoading} />
+      </div>
+    </section>
+  );
+}
+
+function ActivityPanel({ children, className = "", title, toolbar }) {
+  return (
+    <section className={`activity-panel ${className}`.trim()}>
+      <header className="activity-panel-header">
+        <h2>{title}</h2>
+        {toolbar}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function CommitFrequencyCard({ copy, isLoading, timeline }) {
+  const [tooltip, setTooltip] = useState(null);
+  const points = timeline.slice(-30).map((item) => ({
+    date: item.bucket_start,
+    value: Number(item.commit_count) || 0,
+  }));
+  const chart = buildLineChart(points, 720, 140, 18, 16);
+  const showTooltip = (event) => {
+    if (!chart.points.length) {
+      return;
+    }
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    const svgX = ((event.clientX - rect.left) / rect.width) * 720;
+    const point = chart.points.reduce((closest, candidate) => (
+      Math.abs(candidate.x - svgX) < Math.abs(closest.x - svgX) ? candidate : closest
+    ), chart.points[0]);
+
+    setTooltip({
+      ...point,
+      left: `${((event.clientX - rect.left) / rect.width) * 100}%`,
+      top: `${((event.clientY - rect.top) / rect.height) * 100}%`,
+    });
+  };
+
+  return (
+    <ActivityPanel
+      className="commit-frequency-panel"
+      title={copy.frequency}
+      toolbar={<span className="activity-range-pill">{copy.range}</span>}
+    >
+      {chart.points.length > 0 ? (
+        <div className="activity-chart-wrap" onMouseLeave={() => setTooltip(null)}>
+          <svg
+            className="activity-line-chart"
+            viewBox="0 0 720 140"
+            role="img"
+            aria-label={copy.frequency}
+            onMouseMove={showTooltip}
+          >
+            <g className="activity-grid-lines" aria-hidden="true">
+              <line x1="0" x2="720" y1="34" y2="34" />
+              <line x1="0" x2="720" y1="76" y2="76" />
+              <line x1="0" x2="720" y1="118" y2="118" />
+            </g>
+            <path className="commit-frequency-line" d={chart.path} />
+            {tooltip ? <circle className="commit-frequency-focus" cx={tooltip.x} cy={tooltip.y} r="3.5" /> : null}
+          </svg>
+          {tooltip ? (
+            <div className="activity-tooltip" style={{ left: tooltip.left, top: tooltip.top }}>
+              <span>{formatDateOnly(tooltip.date)}</span>
+              <strong>{formatInteger(tooltip.value)} {copy.commits}</strong>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <p className="activity-panel-empty">{isLoading ? copy.loading : copy.noData}</p>
+      )}
+    </ActivityPanel>
+  );
+}
+
+function ContributionHeatmapCard({ copy, isLoading, timeline }) {
+  const [tooltip, setTooltip] = useState(null);
+  const days = buildHeatmapDays(timeline);
+  const max = Math.max(...days.map((day) => day.count), 0);
+  const showTooltip = (event, day) => {
+    const rect = event.currentTarget.parentElement.getBoundingClientRect();
+    setTooltip({
+      count: day.count,
+      date: day.date,
+      left: `${((event.clientX - rect.left) / rect.width) * 100}%`,
+      top: `${((event.clientY - rect.top) / rect.height) * 100}%`,
+    });
+  };
+
+  return (
+    <ActivityPanel
+      className="contribution-heatmap-panel"
+      title={copy.heatmap}
+      toolbar={<HeatmapLegend copy={copy} />}
+    >
+      {days.length > 0 ? (
+        <div className="heatmap-wrap" onMouseLeave={() => setTooltip(null)}>
+          <div className="contribution-heatmap" aria-label={copy.heatmap}>
+          {days.map((day) => (
+            <span
+              className={`heatmap-cell heatmap-level-${heatmapLevel(day.count, max)}`}
+              key={day.key}
+              onMouseEnter={(event) => showTooltip(event, day)}
+              onMouseMove={(event) => showTooltip(event, day)}
+            />
+          ))}
+          </div>
+          {tooltip ? (
+            <div className="activity-tooltip heatmap-tooltip" style={{ left: tooltip.left, top: tooltip.top }}>
+              <span>{formatDateOnly(tooltip.date)}</span>
+              <strong>{formatInteger(tooltip.count)} {copy.contributions}</strong>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <p className="activity-panel-empty">{isLoading ? copy.loading : copy.noData}</p>
+      )}
+    </ActivityPanel>
+  );
+}
+
+function HeatmapLegend({ copy }) {
+  return (
+    <div className="heatmap-legend" aria-hidden="true">
+      <span>{copy.less}</span>
+      {[0, 1, 2, 3, 4].map((level) => (
+        <i className={`heatmap-cell heatmap-level-${level}`} key={level} />
+      ))}
+      <span>{copy.more}</span>
+    </div>
+  );
+}
+
+function AdditionsDeletionsCard({ copy, isLoading, timeline }) {
+  const points = timeline.slice(-30).map((item) => ({
+    date: item.bucket_start,
+    additions: Number(item.additions) || 0,
+    deletions: Number(item.deletions) || 0,
+  }));
+  const totalAdditions = points.reduce((sum, item) => sum + item.additions, 0);
+  const totalDeletions = points.reduce((sum, item) => sum + item.deletions, 0);
+  const consumedBytes = estimateCodeStorage(totalAdditions);
+  const recoveredBytes = estimateCodeStorage(totalDeletions);
+  const additions = buildLineChart(points.map((item) => ({ date: item.date, value: item.additions })), 420, 180, 20, 24);
+  const deletions = buildLineChart(points.map((item) => ({ date: item.date, value: item.deletions })), 420, 180, 20, 24);
+
+  return (
+    <ActivityPanel
+      className="additions-deletions-panel"
+      title={copy.additionsDeletions}
+      toolbar={(
+        <div className="chart-legend">
+          <span className="legend-additions">{copy.additions}</span>
+          <span className="legend-deletions">{copy.deletions}</span>
+        </div>
+      )}
+    >
+      {points.length > 0 ? (
+        <>
+          <div className="churn-summary" aria-label={copy.additionsDeletions}>
+            <div>
+              <span>{copy.additions}</span>
+              <strong>{formatCodeQuantity(totalAdditions)}</strong>
+              <small>{copy.storageConsumed}: {formatBytes(consumedBytes)}</small>
+            </div>
+            <div>
+              <span>{copy.deletions}</span>
+              <strong>{formatCodeQuantity(totalDeletions)}</strong>
+              <small>{copy.storageRecovered}: {formatBytes(recoveredBytes)}</small>
+            </div>
+          </div>
+          <svg className="activity-churn-chart" viewBox="0 0 420 180" role="img" aria-label={copy.additionsDeletions}>
+            <g className="activity-grid-lines" aria-hidden="true">
+              <line x1="0" x2="420" y1="45" y2="45" />
+              <line x1="0" x2="420" y1="90" y2="90" />
+              <line x1="0" x2="420" y1="135" y2="135" />
+            </g>
+            <path className="activity-area activity-area-additions" d={areaPath(additions.points, 156)} />
+            <path className="activity-area activity-area-deletions" d={areaPath(deletions.points, 156)} />
+            <path className="activity-churn-line additions-line" d={additions.path} />
+            <path className="activity-churn-line deletions-line" d={deletions.path} />
+          </svg>
+        </>
+      ) : (
+        <p className="activity-panel-empty">{isLoading ? copy.loading : copy.noData}</p>
+      )}
+    </ActivityPanel>
+  );
+}
+
+function TopModifiedFilesCard({ copy, files, isLoading }) {
+  return (
+    <ActivityPanel className="top-modified-files-panel" title={copy.topFiles}>
+      {files.length > 0 ? (
+        <div className="top-files-table" role="table" aria-label={copy.topFiles}>
+          <div className="top-files-header" role="row">
+            <span role="columnheader">{copy.filePath}</span>
+            <span role="columnheader">{copy.changePercent}</span>
+          </div>
+          {files.map((file, index) => {
+            const percentage = Math.max(0, Math.min(100, Number(file.percentage) || 0));
+            return (
+              <div className="top-file-row" key={file.path} role="row">
+                <span className="material-symbols-outlined" aria-hidden="true">description</span>
+                <code role="cell">{file.path}</code>
+                <strong role="cell">{percentage.toFixed(1)}%</strong>
+                <span className="top-file-track" aria-hidden="true">
+                  <i style={{ width: `${percentage}%`, "--file-accent": languageAccentFor(index) }} />
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="activity-panel-empty">{isLoading ? copy.loading : copy.noData}</p>
+      )}
+    </ActivityPanel>
+  );
+}
+
+function normalizeActivityTimeline(timeline) {
+  if (!Array.isArray(timeline)) {
+    return [];
+  }
+
+  return [...timeline]
+    .filter((item) => item?.bucket_start)
+    .sort((left, right) => new Date(left.bucket_start).getTime() - new Date(right.bucket_start).getTime());
+}
+
+function buildLineChart(points, width, height, paddingX, paddingY) {
+  if (!Array.isArray(points) || points.length === 0) {
+    return { points: [], path: "" };
+  }
+
+  const max = Math.max(...points.map((point) => Number(point.value) || 0), 1);
+  const usableWidth = width - paddingX * 2;
+  const usableHeight = height - paddingY * 2;
+  const chartPoints = points.map((point, index) => ({
+    ...point,
+    x: paddingX + (points.length === 1 ? usableWidth / 2 : (index / (points.length - 1)) * usableWidth),
+    y: paddingY + usableHeight - ((Number(point.value) || 0) / max) * usableHeight,
+  }));
+
+  return {
+    points: chartPoints,
+    path: smoothPath(chartPoints),
+  };
+}
+
+function smoothPath(points) {
+  if (points.length === 0) {
+    return "";
+  }
+  if (points.length === 1) {
+    const point = points[0];
+    return `M ${point.x} ${point.y} L ${point.x + 1} ${point.y}`;
+  }
+
+  return points.reduce((path, point, index) => {
+    if (index === 0) {
+      return `M ${point.x} ${point.y}`;
+    }
+
+    const previous = points[index - 1];
+    const controlX = previous.x + (point.x - previous.x) / 2;
+    return `${path} C ${controlX} ${previous.y}, ${controlX} ${point.y}, ${point.x} ${point.y}`;
+  }, "");
+}
+
+function areaPath(points, baseline) {
+  if (!points.length) {
+    return "";
+  }
+
+  return `${smoothPath(points)} L ${points[points.length - 1].x} ${baseline} L ${points[0].x} ${baseline} Z`;
+}
+
+function buildHeatmapDays(timeline) {
+  const counts = new Map(
+    timeline.map((item) => [dateKey(item.bucket_start), Number(item.commit_count) || 0]),
+  );
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const year = today.getFullYear();
+  const daysInYear = new Date(year, 1, 29).getMonth() === 1 ? 366 : 365;
+  const start = new Date(today);
+  start.setDate(today.getDate() - (daysInYear - 1));
+
+  return Array.from({ length: daysInYear }, (_, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    const key = dateKey(date);
+    return {
+      key,
+      date: date.toISOString(),
+      count: counts.get(key) || 0,
+    };
+  });
+}
+
+function formatInteger(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return "0";
+  }
+
+  return new Intl.NumberFormat("en").format(number);
+}
+
+function formatCodeQuantity(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) {
+    return "0 lines";
+  }
+
+  return `${formatInteger(number)} ${number === 1 ? "line" : "lines"}`;
+}
+
+function estimateCodeStorage(lines) {
+  const number = Number(lines);
+  if (!Number.isFinite(number) || number <= 0) {
+    return 0;
+  }
+
+  return Math.round(number * 80);
+}
+
+function heatmapLevel(count, max) {
+  if (!count || !max) {
+    return 0;
+  }
+  return Math.max(1, Math.min(4, Math.ceil((count / max) * 4)));
+}
+
+function dateKey(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toISOString().slice(0, 10);
+}
+
+function formatDateOnly(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  }).format(date);
 }
 
 function BranchesPage({ branch, branches, branchName, getToken, onSelectBranch, page, repoId, status }) {
@@ -1642,6 +2240,257 @@ function BranchesPage({ branch, branches, branchName, getToken, onSelectBranch, 
   );
 }
 
+function SyncMonitorPage({
+  cloneStatus,
+  forcePullStatus,
+  getToken,
+  onClone,
+  onForcePull,
+  onRefresh,
+  page,
+  repository,
+  repositoryStatus,
+}) {
+  const isCloning = cloneStatus.status === "loading" && cloneStatus.repoId === repository?.id;
+  const isForcePulling = forcePullStatus.status === "loading" && forcePullStatus.repoId === repository?.id;
+  const [monitorState, setMonitorState] = useState({
+    status: "idle",
+    data: null,
+  });
+
+  useEffect(() => {
+    let active = true;
+
+    if (!repository?.id) {
+      setMonitorState({ status: "empty", data: null });
+      return () => {
+        active = false;
+      };
+    }
+
+    setMonitorState({ status: "loading", data: null });
+    fetchSyncMonitor(repository.id, getToken)
+      .then((data) => {
+        if (active) {
+          setMonitorState({ status: "ready", data });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setMonitorState({ status: "unavailable", data: null });
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [getToken, repository?.id]);
+
+  const statusText = isCloning
+    ? page.cloning
+    : cloneStatus.status === "ready" && cloneStatus.repoId === repository?.id
+      ? page.cloned
+      : cloneStatus.status === "error" && cloneStatus.repoId === repository?.id
+        ? page.cloneFailed
+        : page.cloneReady;
+  const forcePullText = isForcePulling
+    ? page.forcePulling
+    : forcePullStatus.status === "ready" && forcePullStatus.repoId === repository?.id
+      ? page.forcePulled
+      : forcePullStatus.status === "error" && forcePullStatus.repoId === repository?.id
+        ? page.forcePullFailed
+        : page.forcePullReady;
+
+  return (
+    <section className="workspace-section">
+      <div className="landing-heading">
+        <p className="label-caps">{page.eyebrow}</p>
+        <h1>{page.title}</h1>
+        <p>{page.description}</p>
+      </div>
+      <div className="settings-panel">
+        <header className="settings-panel-header">
+          <h2>{repository?.name || repository?.id || page.title}</h2>
+          <span>{repository?.default_branch || ""}</span>
+        </header>
+        <div className="settings-panel-body">
+          <SyncActionSummary counts={monitorState.data?.action_counts} page={page} />
+          <div className="danger-action-row">
+            <div>
+              <strong>{page.cloneDesktop}</strong>
+              <span>{statusText}</span>
+              {cloneStatus.message && cloneStatus.repoId === repository?.id ? <code>{cloneStatus.message}</code> : null}
+            </div>
+            <button
+              className="secondary-button"
+              disabled={!repository || repositoryStatus !== "ready" || isCloning}
+              type="button"
+              onClick={onClone}
+            >
+              {isCloning ? page.cloning : page.cloneDesktop}
+            </button>
+          </div>
+          <div className="danger-action-row">
+            <div>
+              <strong>{page.forcePull}</strong>
+              <span>{forcePullText}</span>
+              {forcePullStatus.message && forcePullStatus.repoId === repository?.id ? <code>{forcePullStatus.message}</code> : null}
+            </div>
+            <button
+              className="secondary-button"
+              disabled={!repository || repositoryStatus !== "ready" || isForcePulling || isCloning}
+              type="button"
+              onClick={onForcePull}
+            >
+              {isForcePulling ? page.forcePulling : page.forcePull}
+            </button>
+          </div>
+          <div className="settings-actions">
+            <button className="secondary-button" type="button" onClick={onRefresh}>{page.refresh}</button>
+          </div>
+        </div>
+      </div>
+      <div className="sync-dashboard-grid">
+        <SyncLogsPanel isLoading={monitorState.status === "loading"} logs={monitorState.data?.logs} page={page} />
+        <SyncAnomaliesPanel anomalies={monitorState.data?.anomalies} isLoading={monitorState.status === "loading"} page={page} />
+        <FailurePropagationPanel buckets={monitorState.data?.failure_propagation} isLoading={monitorState.status === "loading"} page={page} />
+      </div>
+    </section>
+  );
+}
+
+function SyncActionSummary({ counts, page }) {
+  const items = [
+    { key: "push_count", label: page.push, icon: "upload" },
+    { key: "pull_count", label: page.pull, icon: "download" },
+    { key: "merge_count", label: page.merge, icon: "merge_type" },
+    { key: "sync_count", label: page.sync, icon: "sync" },
+  ];
+
+  return (
+    <div className="sync-action-summary" aria-label={page.title}>
+      {items.map((item) => (
+        <div className="sync-action-tile" key={item.key}>
+          <span className="material-symbols-outlined" aria-hidden="true">{item.icon}</span>
+          <strong>{compactNumber(counts?.[item.key] ?? 0)}</strong>
+          <small>{item.label}</small>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SyncLogsPanel({ isLoading, logs, page }) {
+  const items = Array.isArray(logs) ? logs : [];
+
+  return (
+    <section className="sync-panel sync-logs-panel">
+      <header className="activity-panel-header">
+        <h2>{page.remoteLogs}</h2>
+      </header>
+      {items.length > 0 ? (
+        <div className="sync-log-list">
+          {items.slice(0, 10).map((item, index) => (
+            <article className="sync-log-row" key={`${item.source}-${item.created_at}-${index}`}>
+              <span className={`sync-severity sync-severity-${normalizeSeverity(item.severity)}`}>{severityLabel(item.severity, page)}</span>
+              <div>
+                <strong>{item.message}</strong>
+                <span>{[item.action, item.branch_name, item.commit_hash?.slice(0, 10)].filter(Boolean).join(" · ")}</span>
+              </div>
+              <time dateTime={item.created_at}>{formatDateTime(item.created_at)}</time>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="activity-panel-empty">{isLoading ? page.cloning : page.noLogs}</p>
+      )}
+    </section>
+  );
+}
+
+function SyncAnomaliesPanel({ anomalies, isLoading, page }) {
+  const items = Array.isArray(anomalies) ? anomalies : [];
+
+  return (
+    <section className="sync-panel">
+      <header className="activity-panel-header">
+        <h2>{page.anomalyTitle}</h2>
+      </header>
+      {items.length > 0 ? (
+        <div className="sync-anomaly-list">
+          {items.slice(0, 6).map((item, index) => (
+            <article className="sync-anomaly-row" key={`${item.created_at}-${index}`}>
+              <span className={`sync-severity sync-severity-${normalizeSeverity(item.level)}`}>{severityLabel(item.level, page)}</span>
+              <div>
+                <strong>{item.message}</strong>
+                <span>{[item.event_type, item.branch_name, formatDateTime(item.created_at)].filter(Boolean).join(" · ")}</span>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="activity-panel-empty">{isLoading ? page.cloning : page.noAnomalies}</p>
+      )}
+    </section>
+  );
+}
+
+function FailurePropagationPanel({ buckets, isLoading, page }) {
+  const items = Array.isArray(buckets) ? buckets : [];
+  const max = Math.max(...items.map((item) => Number(item.total_count) || 0), 1);
+
+  return (
+    <section className="sync-panel failure-propagation-panel">
+      <header className="activity-panel-header">
+        <h2>{page.propagationTitle}</h2>
+      </header>
+      {items.length > 0 ? (
+        <div className="failure-bars" aria-label={page.propagationTitle}>
+          {items.map((item) => {
+            const total = Number(item.total_count) || 0;
+            const critical = Number(item.critical_count) || 0;
+            const warn = Number(item.warn_count) || 0;
+            return (
+              <div className="failure-bar-row" key={item.bucket_start}>
+                <time dateTime={item.bucket_start}>{formatDateOnly(item.bucket_start)}</time>
+                <span className="failure-bar-track" aria-hidden="true">
+                  <i className="failure-critical" style={{ width: `${(critical / max) * 100}%` }} />
+                  <i className="failure-warn" style={{ width: `${(warn / max) * 100}%` }} />
+                </span>
+                <strong>{compactNumber(total)}</strong>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="activity-panel-empty">{isLoading ? page.cloning : page.noPropagation}</p>
+      )}
+    </section>
+  );
+}
+
+function normalizeSeverity(value) {
+  const normalized = String(value || "info").toLowerCase();
+  if (normalized === "critical" || normalized === "danger") {
+    return "critical";
+  }
+  if (normalized === "warn" || normalized === "warning") {
+    return "warn";
+  }
+  return "info";
+}
+
+function severityLabel(value, page) {
+  const normalized = normalizeSeverity(value);
+  if (normalized === "critical") {
+    return page.critical;
+  }
+  if (normalized === "warn") {
+    return page.warn;
+  }
+  return page.info;
+}
+
 function EmptySection({ page }) {
   return (
     <section className="workspace-section">
@@ -1691,6 +2540,18 @@ function SettingsPage({ copy, onDeleteAccount, onDeleteRepository, onSave, onUpd
             <TextField label={copy.settings.displayName} value={settings.displayName} onChange={(value) => onUpdate("displayName", value)} />
             <TextField label={copy.settings.username} value={settings.username} onChange={(value) => onUpdate("username", value)} />
             <TextField disabled help={copy.settings.emailLocked} label={copy.settings.email} type="email" value={settings.email} onChange={() => {}} />
+          </div>
+        </SettingsPanel>
+
+        <SettingsPanel eyebrow={copy.settings.alertsEyebrow} title={copy.settings.alertsTitle}>
+          <div className="form-grid">
+            <TextField
+              help={copy.settings.pushAlertSenderHelp}
+              label={copy.settings.pushAlertSenderEmail}
+              type="email"
+              value={settings.pushAlertSenderEmail}
+              onChange={(value) => onUpdate("pushAlertSenderEmail", value)}
+            />
           </div>
         </SettingsPanel>
 

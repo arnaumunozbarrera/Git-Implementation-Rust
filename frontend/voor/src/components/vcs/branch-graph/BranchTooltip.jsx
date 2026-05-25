@@ -18,27 +18,34 @@ function formatTime(value) {
   }).format(date);
 }
 
-export function BranchTooltip({ node }) {
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
+export function BranchTooltip({ node, width = 1040, height = 430 }) {
   if (!node) {
     return null;
   }
 
   const author = node.author?.username || node.author?.email || "";
-  const time = formatTime(node.created_at);
+  const time = formatTime(node.created_at || node.createdAt);
   const meta = [author, time].filter(Boolean).join(" / ");
+  const left = clamp((Number(node.x) / Number(width || 1040)) * 100, 3, 82);
+  const top = clamp((Number(node.y) / Number(height || 430)) * 100, 8, 92);
+  const branchName = node.branchNames?.join(", ") || node.branchName || "";
 
   return (
     <div
       className="branch-graph-tooltip"
       style={{
-        left: `${(node.x / 1040) * 100}%`,
-        top: `${(node.y / 430) * 100}%`,
+        left: `${left}%`,
+        top: `${top}%`,
       }}
     >
-      <strong>{shortHash(node.hash)}</strong>
-      <span>{node.message}</span>
+      <strong>{shortHash(node.hash) || "commit"}</strong>
+      <span>{node.message || "Commit node"}</span>
       {meta ? <small>{meta}</small> : null}
-      <code>{node.branchNames?.join(", ") || node.branchName}</code>
+      {branchName ? <code>{branchName}</code> : null}
     </div>
   );
 }

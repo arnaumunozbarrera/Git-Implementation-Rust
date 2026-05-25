@@ -7,12 +7,13 @@ use axum::{
 use crate::api::api::AppState;
 use crate::api::auth::{self, AuthenticatedUser};
 use crate::api::models::{
-    Branch, CloneRepoRequest, CloneRepoResponse, DeleteActionResponse, InitRepoRequest,
-    InitRepoResponse, Repository,
+    Branch, CloneRepoRequest, CloneRepoResponse, DeleteActionResponse, ForceRecloneRequest,
+    InitRepoRequest, InitRepoResponse, Repository,
 };
 use crate::api::services::repo_service::{
     clone_repo_to_desktop as clone_repo_to_desktop_service, delete_repo as delete_repo_service,
-    get_all_repos, get_repo_branches,
+    force_reclone_repo_to_desktop as force_reclone_repo_to_desktop_service, get_all_repos,
+    get_repo_branches,
     init_repo as init_repo_service,
 };
 use crate::utils::service_monitor::LogLevel;
@@ -219,6 +220,50 @@ pub async fn clone_repo_to_desktop(
             state
                 .monitor
                 .log(LogLevel::Warn, "backend", "clone-repo-failed", &message);
+            Err((classify_clone_error(&message), message))
+        }
+    }
+}
+
+pub async fn force_reclone_repo_to_desktop(
+    State(state): State<AppState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(repo_id): Path<String>,
+    Json(payload): Json<ForceRecloneRequest>,
+) -> Result<Json<CloneRepoResponse>, (StatusCode, String)> {
+    let Some(client) = state.client.as_ref() else {
+        let message = "[ERROR] Supabase client not configured".to_string();
+        state
+            .monitor
+            .log(LogLevel::Warn, "backend", "force-reclone-unavailable", &message);
+        return Err((StatusCode::SERVICE_UNAVAILABLE, message));
+    };
+
+    auth::ensure_user_exists(Some(client), &user)
+        .await
+        .map_err(|message| (StatusCode::INTERNAL_SERVER_ERROR, message))?;
+
+    match force_reclone_repo_to_desktop_service(
+        client,
+        &user.user_id,
+        &repo_id,
+        payload.target_path.as_deref(),
+    )
+    .await
+    {
+        Ok(response) => {
+            state.monitor.log(
+                LogLevel::Info,
+                "backend",
+                "force-reclone-finish",
+                &response.message,
+            );
+            Ok(Json(response))
+        }
+        Err(message) => {
+            state
+                .monitor
+                .log(LogLevel::Warn, "backend", "force-reclone-failed", &message);
             Err((classify_clone_error(&message), message))
         }
     }

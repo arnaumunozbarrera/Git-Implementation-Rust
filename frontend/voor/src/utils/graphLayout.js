@@ -1,9 +1,17 @@
 const graphWidth = 1040;
-const graphHeight = 430;
+const graphHeight = 500;
 const padding = { left: 70, right: 70, top: 54, bottom: 74 };
 
 function chronological(nodes) {
-  return [...(nodes || [])].reverse();
+  return [...(nodes || [])].sort((left, right) => {
+    const leftTime = timestamp(left);
+    const rightTime = timestamp(right);
+    if (leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+
+    return (Number(right.depth_from_head) || 0) - (Number(left.depth_from_head) || 0);
+  });
 }
 
 function clamp(value, min, max) {
@@ -17,6 +25,20 @@ function laneOffset(index) {
 
   const ring = Math.ceil(index / 2);
   return (index % 2 === 0 ? 1 : -1) * ring;
+}
+
+function timestamp(node) {
+  const value = node?.created_at || node?.committed_at || node?.date || node?.timestamp;
+  const parsed = value ? new Date(value).getTime() : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatAxisDate(value) {
+  if (!value) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(new Date(value));
 }
 
 function pathThrough(points) {
@@ -51,145 +73,138 @@ export function layoutTopology({ branches, graphsByBranch, repository, selectedB
     }
     return (right.divergence?.distance || 0) - (left.divergence?.distance || 0);
   });
-  const defaultGraph = graphsByBranch[defaultBranchName] || graphsByBranch[sortedBranches[0]?.name] || {};
-  const defaultNodes = chronological(defaultGraph.nodes);
-  const defaultHashes = new Map(defaultNodes.map((node, index) => [node.hash, index]));
-  const span = Math.max(1, defaultNodes.length - 1);
-  const step = (graphWidth - padding.left - padding.right) / Math.max(8, span + 2);
-  const centerY = graphHeight / 2;
+  const branchCount = Math.max(1, sortedBranches.length);
+  const laneSpacing = Math.min(76, Math.max(44, (graphHeight - padding.top - padding.bottom) / Math.max(1, branchCount - 1)));
+  const centerY = padding.top + Math.floor((branchCount - 1) / 2) * laneSpacing;
+  const branchLaneY = new Map(sortedBranches.map((branch, index) => [branch.name, padding.top + index * laneSpacing]));
+  const allGraphNodes = sortedBranches.flatMap((branch) => chronological(graphsByBranch[branch.name]?.nodes || []));
+  const timedNodes = allGraphNodes.filter((node) => timestamp(node) > 0);
+  const minTime = Math.min(...timedNodes.map(timestamp), Date.now());
+  const maxTime = Math.max(...timedNodes.map(timestamp), minTime + 1);
+  const timeSpan = Math.max(1, maxTime - minTime);
+  const fallbackStep = (graphWidth - padding.left - padding.right) / Math.max(8, Math.max(...sortedBranches.map((branch) => (graphsByBranch[branch.name]?.nodes || []).length), 1));
+  const hashPositions = new Map();
   const nodeMap = new Map();
   const paths = [];
   const heatZones = [];
   const labels = [];
-  const defaultPoints = [];
-
-  defaultNodes.forEach((node, index) => {
-    const x = padding.left + index * step;
-    const y = centerY;
-    defaultPoints.push({ x, y });
-    nodeMap.set(node.hash, {
-      ...node,
-      x,
-      y,
-      branchName: defaultBranchName,
-      branchNames: new Set([defaultBranchName, ...(node.branches || [])]),
-      isDefault: true,
-      isHead: node.hash === defaultGraph.head,
-      state: "default",
-    });
+  const axisTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+    const time = minTime + timeSpan * ratio;
+    return {
+      id: `tick-${ratio}`,
+      x: padding.left + ratio * (graphWidth - padding.left - padding.right),
+      y: graphHeight - padding.bottom + 32,
+      label: formatAxisDate(time),
+    };
   });
 
   sortedBranches.forEach((branch, branchIndex) => {
     const graph = graphsByBranch[branch.name] || {};
     const nodes = chronological(graph.nodes);
-    const offset = laneOffset(branchIndex);
-    const laneY = clamp(centerY + offset * 78, padding.top + 26, graphHeight - padding.bottom);
-    const commonHash = branch.divergence?.commonHash;
-    const commonIndex = commonHash && defaultHashes.has(commonHash) ? defaultHashes.get(commonHash) : Math.max(0, defaultNodes.length - 2);
-    const branchOnly = nodes.filter((node) => !defaultHashes.has(node.hash));
-    const startX = padding.left + commonIndex * step;
+    const laneY = branchLaneY.get(branch.name) ?? clamp(centerY + laneOffset(branchIndex) * 72, padding.top + 26, graphHeight - padding.bottom);
+    const commonHash = branch.divergence?.commonHash || branch.merge_base_hash;
     const active = !selectedBranchName && !hoveredBranchName
       ? true
       : branch.name === selectedBranchName || branch.name === hoveredBranchName;
     const muted = Boolean(selectedBranchName || hoveredBranchName) && !active && branch.name !== defaultBranchName;
-    const pathPoints = [];
+    const visibleBranchNodes = nodes.length > 0
+      ? nodes
+      : branch.head_commit_hash || branch.last_commit_hash
+        ? [{
+            hash: branch.head_commit_hash || branch.last_commit_hash,
+            created_at: branch.latest_commit_at || branch.last_seen_at || branch.created_at,
+            message: branch.latestMessage || branch.status_reason || "",
+            branches: [branch.name],
+          }]
+        : [];
+    const pathPoints = visibleBranchNodes.map((node, index) => {
+      const nodeTime = timestamp(node);
+      const x = nodeTime > 0
+        ? padding.left + ((nodeTime - minTime) / timeSpan) * (graphWidth - padding.left - padding.right)
+        : padding.left + index * fallbackStep;
+      return {
+        x: clamp(x, padding.left, graphWidth - padding.right),
+        y: laneY,
+      };
+    });
 
-    if (branch.name === defaultBranchName) {
+    const mergeNode = commonHash ? visibleBranchNodes.find((node) => node.hash === commonHash) : null;
+    const mergePosition = commonHash && hashPositions.has(commonHash)
+      ? hashPositions.get(commonHash)
+      : mergeNode
+        ? pathPoints[visibleBranchNodes.indexOf(mergeNode)]
+        : null;
+
+    if (mergePosition && branch.name !== defaultBranchName && pathPoints.length > 0) {
+      const firstPoint = pathPoints[0];
       paths.push({
-        id: branch.name,
+        id: `${branch.name}-fork`,
         branchName: branch.name,
         color: branch.accent,
-        d: straightPath(defaultPoints),
-        active: active || !selectedBranchName,
-        isDefault: true,
+        d: pathThrough([mergePosition, { x: Math.max(mergePosition.x + 18, firstPoint.x - 24), y: laneY }, firstPoint]),
+        active,
         muted,
+        isFork: true,
         severity: branch.severity,
-      });
-      labels.push({
-        id: branch.name,
-        branchName: branch.name,
-        x: defaultPoints.at(-1)?.x || graphWidth - padding.right,
-        y: centerY - 42,
-        color: branch.accent,
         status: branch.status,
-        ahead: branch.divergence?.ahead || 0,
-        behind: branch.divergence?.behind || 0,
-        isDefault: true,
       });
-      return;
     }
 
-    pathPoints.push({ x: startX, y: centerY });
-    const visibleBranchNodes = branchOnly.length > 0
-      ? branchOnly
-      : nodes.filter((node) => node.hash === graph.head).slice(0, 1);
-
     visibleBranchNodes.forEach((node, index) => {
-      const x = Math.min(graphWidth - padding.right, startX + (index + 1.1) * step * 1.08);
       const intensity = Math.min(1, 0.22 + (branch.divergence?.distance || 0) / 18);
-      const y = laneY + Math.sin(index * 0.85) * 8;
-      pathPoints.push({ x, y });
+      const point = pathPoints[index];
+      hashPositions.set(node.hash, point);
+      const existing = nodeMap.get(node.hash);
+      const branchNames = new Set([
+        ...(existing?.branchNames || []),
+        branch.name,
+        ...(node.branches || []),
+      ]);
       nodeMap.set(node.hash, {
+        ...(existing || {}),
         ...node,
-        x,
-        y,
+        x: existing?.x ?? point.x,
+        y: existing?.y ?? point.y,
         branchName: branch.name,
-        branchNames: new Set([branch.name, ...(node.branches || [])]),
-        isDefault: false,
+        branchNames,
+        isDefault: branch.name === defaultBranchName || node.is_default_branch,
         isHead: node.hash === graph.head || node.hash === branch.last_commit_hash,
         state: branch.status === "outdated" ? "stale" : "active",
         intensity,
       });
     });
 
-    const branchEnd = pathPoints.at(-1) || pathPoints[0];
-    const mergeTargetIndex = Math.min(defaultPoints.length - 1, Math.max(commonIndex + Math.max(2, visibleBranchNodes.length), commonIndex + 1));
-    const mergeTarget = defaultPoints[mergeTargetIndex];
-    const mergePoints = mergeTarget && branch.status !== "outdated" && (branch.divergence?.behind || 0) !== 0
-      ? [branchEnd, { x: branchEnd.x + step * 0.65, y: branchEnd.y }, mergeTarget]
-      : [];
-
     paths.push({
       id: branch.name,
       branchName: branch.name,
       color: branch.accent,
-      d: pathThrough(pathPoints),
-      active,
+      d: straightPath(pathPoints),
+      active: active || branch.name === defaultBranchName,
+      isDefault: branch.name === defaultBranchName,
       muted,
       severity: branch.severity,
+      status: branch.status,
     });
 
-    if (mergePoints.length > 0) {
-      paths.push({
-        id: `${branch.name}-merge`,
-        branchName: branch.name,
-        color: branch.accent,
-        d: pathThrough(mergePoints),
-        active,
-        muted,
-        isMerge: true,
-        severity: branch.severity,
-      });
-    }
-
+    const branchEnd = pathPoints.at(-1) || { x: padding.left, y: laneY };
     labels.push({
       id: branch.name,
       branchName: branch.name,
       x: Math.min(graphWidth - 168, branchEnd.x + 16),
-      y: clamp(branchEnd.y + (branchEnd.y < centerY ? -52 : 24), padding.top, graphHeight - padding.bottom + 14),
+      y: clamp(branchEnd.y - 25, padding.top - 26, graphHeight - padding.bottom + 14),
       color: branch.accent,
       status: branch.status,
       ahead: branch.divergence?.ahead || 0,
       behind: branch.divergence?.behind || 0,
       health: branch.health_score,
-      isDefault: false,
+      isDefault: branch.name === defaultBranchName,
     });
 
     heatZones.push({
       id: branch.name,
-      x: startX + step,
+      x: pathPoints[0]?.x || padding.left,
       y: laneY - 28,
-      width: Math.max(120, branchOnly.length * step * 1.12),
+      width: Math.max(120, (branchEnd.x - (pathPoints[0]?.x || padding.left)) + 36),
       height: 56,
       color: branch.accent,
       opacity: Math.min(0.16, Math.max(branch.status === "outdated" ? 0.04 : 0.08, Number(branch.activity_heat) || 0)),
@@ -210,5 +225,6 @@ export function layoutTopology({ branches, graphsByBranch, repository, selectedB
     nodes,
     heatZones,
     labels,
+    axisTicks,
   };
 }

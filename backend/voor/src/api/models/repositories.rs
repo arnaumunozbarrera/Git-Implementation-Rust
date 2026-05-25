@@ -45,6 +45,11 @@ pub struct CloneRepoRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct ForceRecloneRequest {
+    pub target_path: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CloneRepoResponse {
     pub message: String,
     pub path: String,

@@ -1,4 +1,4 @@
-import { fetchActivityFeed, fetchAnalyticsOverview, fetchBranches, fetchCommitGraph, fetchVcsAnalytics } from "../api.js";
+import { fetchActivityFeed, fetchAnalyticsOverview, fetchBranchAnalytics, fetchBranches, fetchCommitGraph, fetchVcsAnalytics } from "../api.js";
 import { normalizeBranchAnalytics } from "../utils/topologyBuilder.js";
 import { severityForDivergence } from "../utils/branchDivergence.js";
 
@@ -48,7 +48,8 @@ function normalizeVcsBranch(branch, index) {
     latestCommit,
     latestContributor: displayName(latestCommit?.author),
     latestMessage: latestCommit?.message || "",
-    commitCount: Math.max(0, Math.round(Number(branch.commit_density) || 0)),
+    commitCount: Math.max(0, Math.round(Number(branch.commit_count ?? branch.commit_density) || 0)),
+    activityScore: Number(branch.activity_score) || 0,
     accent: branch.lane_color || branchPalette[index % branchPalette.length],
     status,
     severity,
@@ -80,7 +81,9 @@ export async function fetchRepositoryAnalytics({ repoId, getToken, repository })
     };
   }
 
-  const vcsAnalytics = await fetchVcsAnalytics(repoId, getToken).catch(() => null);
+  const vcsAnalytics = await fetchBranchAnalytics(repoId, getToken)
+    .catch(() => fetchVcsAnalytics(repoId, getToken))
+    .catch(() => null);
   if (vcsAnalytics?.branches) {
     const analyticsResponse = await fetchAnalyticsOverview(repoId, getToken).catch(() => null);
     const activityResponse = await fetchActivityFeed(repoId, getToken, 24).catch(() => ({ items: [] }));
@@ -103,7 +106,7 @@ export async function fetchRepositoryAnalytics({ repoId, getToken, repository })
 
     return {
       activity: Array.isArray(activityResponse?.items) ? activityResponse.items : [],
-      analytics: analyticsResponse,
+      analytics: { ...(analyticsResponse || {}), ...(vcsAnalytics.dag_metrics || {}) },
       branches,
       graphsByBranch: { ...cachedGraphs, ...Object.fromEntries(graphPairs) },
       timeline: vcsAnalytics.timeline || [],

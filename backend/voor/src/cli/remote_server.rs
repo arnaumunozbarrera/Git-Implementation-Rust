@@ -6,14 +6,14 @@ use std::process::Command;
 use std::time::Duration;
 
 use ignore::WalkBuilder;
-use reqwest::blocking::{Client, RequestBuilder, Response};
 use reqwest::StatusCode;
+use reqwest::blocking::{Client, RequestBuilder, Response};
 use serde::Deserialize;
 
 use crate::api::models::{InitRepoRequest, InitRepoResponse};
 use crate::cli::branch;
-use crate::utils::blob_object::{self, HashAlgorithm};
 use crate::utils::app_config;
+use crate::utils::blob_object::{self, HashAlgorithm};
 use crate::utils::fs_ops;
 use crate::utils::index;
 use crate::utils::refs;
@@ -136,8 +136,9 @@ fn init_remote_locked(branch_name: Option<&str>) -> Result<(), String> {
         sync::collect_encoded_objects(&head)?
     };
 
+    let client = http_client()?;
     let response = send_authorized_request(|token| {
-        authorized(Client::new().post(format!("{}/repos/init", remote)), token)
+        authorized(client.post(format!("{}/repos/init", remote)), token)
             .json(&InitRepoRequest {
                 repo_id: repo_id.clone(),
                 name: repo_id.clone(),
@@ -148,8 +149,16 @@ fn init_remote_locked(branch_name: Option<&str>) -> Result<(), String> {
                 readme_path: Some("README.md".to_string()),
                 tags: Some(vec!["rust".to_string(), "git".to_string()]),
                 theme: None,
-                head: if head.is_empty() { None } else { Some(head.clone()) },
-                objects: if objects.is_empty() { None } else { Some(objects.clone()) },
+                head: if head.is_empty() {
+                    None
+                } else {
+                    Some(head.clone())
+                },
+                objects: if objects.is_empty() {
+                    None
+                } else {
+                    Some(objects.clone())
+                },
             })
             .send()
             .map_err(|_| "[ERROR] Remote repository initialization request failed".to_string())
@@ -236,10 +245,7 @@ fn bootstrap_initial_commit_from_worktree(branch_name: &str) -> Result<Option<St
 }
 
 fn should_skip_bootstrap_path(path: &str) -> bool {
-    path == ".voor"
-        || path.starts_with(".voor/")
-        || path == ".git"
-        || path.starts_with(".git/")
+    path == ".voor" || path.starts_with(".voor/") || path == ".git" || path.starts_with(".git/")
 }
 
 fn push_branch_locked(branch_name: &str) -> Result<(), String> {
@@ -249,8 +255,9 @@ fn push_branch_locked(branch_name: &str) -> Result<(), String> {
     let repo_id = repo_id_from_config_or_cwd()?;
     let objects = sync::collect_encoded_objects(&head)?;
 
+    let client = http_client()?;
     let response = send_authorized_request(|token| {
-        authorized(Client::new().post(format!("{}/push", remote)), token)
+        authorized(client.post(format!("{}/push", remote)), token)
             .json(&PushRequest {
                 repo_id: repo_id.clone(),
                 user_id: None,
@@ -285,8 +292,9 @@ fn pull_branch_locked(branch_name: &str) -> Result<(), String> {
     let repo_id = repo_id_from_config_or_cwd()?;
     let current_head = refs::read_head_target();
 
+    let client = http_client()?;
     let response = send_authorized_request(|token| {
-        authorized(Client::new().post(format!("{}/pull", remote)), token)
+        authorized(client.post(format!("{}/pull", remote)), token)
             .json(&PullRequest {
                 repo_id: repo_id.clone(),
                 user_id: None,
@@ -313,7 +321,10 @@ fn pull_branch_locked(branch_name: &str) -> Result<(), String> {
         sync::restore_working_tree(&current_head, &result.head)?;
     }
 
-    println!("[INFO] Pulled branch '{}' at {}", result.branch, result.head);
+    println!(
+        "[INFO] Pulled branch '{}' at {}",
+        result.branch, result.head
+    );
     println!("[INFO] Received {} objects", result.objects.len());
     print_database_action(result.database_action.as_deref());
     Ok(())
@@ -325,8 +336,9 @@ fn sync_db_internal(branch_name: &str, print_prefix: bool) -> Result<(), String>
     let repo_id = repo_id_from_config_or_cwd()?;
     let objects = sync::collect_encoded_objects(&head)?;
 
+    let client = http_client()?;
     let response = send_authorized_request(|token| {
-        authorized(Client::new().post(format!("{}/sync-db", remote)), token)
+        authorized(client.post(format!("{}/sync-db", remote)), token)
             .json(&SyncDbRequest {
                 repo_id: repo_id.clone(),
                 user_id: None,
@@ -363,6 +375,14 @@ fn sync_db_internal(branch_name: &str, print_prefix: bool) -> Result<(), String>
 
 fn authorized(builder: RequestBuilder, token: &str) -> RequestBuilder {
     builder.bearer_auth(token.trim())
+}
+
+fn http_client() -> Result<Client, String> {
+    Client::builder()
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(60))
+        .build()
+        .map_err(|error| format!("[ERROR] Unable to create HTTP client: {}", error))
 }
 
 fn send_authorized_request<F>(mut send: F) -> Result<Response, String>
@@ -609,7 +629,12 @@ fn login_with_browser(print_success_page_hint: bool) -> Result<String, String> {
         .map_err(|error| format!("[ERROR] Unable to start local login callback: {}", error))?;
     let port = listener
         .local_addr()
-        .map_err(|error| format!("[ERROR] Unable to read local login callback address: {}", error))?
+        .map_err(|error| {
+            format!(
+                "[ERROR] Unable to read local login callback address: {}",
+                error
+            )
+        })?
         .port();
     listener
         .set_nonblocking(false)
@@ -621,18 +646,14 @@ fn login_with_browser(print_success_page_hint: bool) -> Result<String, String> {
     println!("[INFO] Waiting for Clerk to return a session token...");
 
     for stream in listener.incoming() {
-        let mut stream = stream.map_err(|error| format!("[ERROR] Login callback failed: {}", error))?;
+        let mut stream =
+            stream.map_err(|error| format!("[ERROR] Login callback failed: {}", error))?;
         match read_login_callback(&mut stream)? {
             LoginCallback::Options => {
                 write_http_response(&mut stream, "204 No Content", "", "text/plain")?;
             }
             LoginCallback::Token(token) => {
-                write_http_response(
-                    &mut stream,
-                    "200 OK",
-                    "{\"ok\":true}",
-                    "application/json",
-                )?;
+                write_http_response(&mut stream, "200 OK", "{\"ok\":true}", "application/json")?;
                 if print_success_page_hint {
                     println!("[INFO] Clerk login completed");
                 }
@@ -661,7 +682,12 @@ enum LoginCallback {
 fn read_login_callback(stream: &mut TcpStream) -> Result<LoginCallback, String> {
     stream
         .set_read_timeout(Some(Duration::from_secs(30)))
-        .map_err(|error| format!("[ERROR] Unable to configure login callback timeout: {}", error))?;
+        .map_err(|error| {
+            format!(
+                "[ERROR] Unable to configure login callback timeout: {}",
+                error
+            )
+        })?;
 
     let mut buffer = Vec::new();
     let mut temp = [0_u8; 1024];
@@ -692,7 +718,8 @@ fn read_login_callback(stream: &mut TcpStream) -> Result<LoginCallback, String> 
         }
     }
 
-    let position = header_end.ok_or_else(|| "[ERROR] Invalid login callback request".to_string())?;
+    let position =
+        header_end.ok_or_else(|| "[ERROR] Invalid login callback request".to_string())?;
     let headers = String::from_utf8_lossy(&buffer[..position]);
     let request_line = headers.lines().next().unwrap_or_default();
 
@@ -737,9 +764,7 @@ fn write_http_response(
 }
 
 fn find_header_end(buffer: &[u8]) -> Option<usize> {
-    buffer
-        .windows(4)
-        .position(|window| window == b"\r\n\r\n")
+    buffer.windows(4).position(|window| window == b"\r\n\r\n")
 }
 
 fn parse_content_length(headers: &str) -> usize {
@@ -777,7 +802,10 @@ fn open_browser(url: &str) -> Result<(), String> {
 
     match result {
         Ok(status) if status.success() => Ok(()),
-        Ok(status) => Err(format!("[ERROR] Browser opener exited with status {}", status)),
+        Ok(status) => Err(format!(
+            "[ERROR] Browser opener exited with status {}",
+            status
+        )),
         Err(error) => Err(format!("[ERROR] Unable to open browser: {}", error)),
     }
 }

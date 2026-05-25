@@ -204,6 +204,10 @@ pub struct VcsBranchAnalytics {
     pub last_seen_at: Option<String>,
     pub commit_density: Option<f64>,
     pub activity_heat: Option<f64>,
+    pub commit_count: i64,
+    pub activity_score: f64,
+    pub latest_commit_at: Option<String>,
+    pub latest_contributor: Option<String>,
     pub latest_commit: Option<CommitGraphNode>,
 }
 
@@ -220,6 +224,23 @@ pub struct VcsTopologyCacheItem {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct RepositoryDagMetricsResponse {
+    pub commit_dag_complexity: f64,
+    pub dag_complexity_status: String,
+    pub longest_chain_nodes: i64,
+    pub open_pr_count: i64,
+    pub open_pr_delta_24h: i64,
+    pub total_commits: i64,
+    pub avg_divergence: f64,
+    pub stale_ratio: f64,
+    pub merge_velocity_per_week: f64,
+    pub branch_count: i64,
+    pub default_branch_name: Option<String>,
+    pub computed_at: String,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct VcsTimelineBucket {
     pub bucket_start: String,
     pub bucket_granularity: String,
@@ -232,10 +253,69 @@ pub struct VcsTimelineBucket {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct TopModifiedFile {
+    pub path: String,
+    pub change_count: i64,
+    pub percentage: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SyncMonitorLogItem {
+    pub source: String,
+    pub action: String,
+    pub severity: String,
+    pub message: String,
+    pub branch_name: Option<String>,
+    pub commit_hash: Option<String>,
+    pub created_at: String,
+    pub actor: Option<UserSummary>,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SyncAnomalyItem {
+    pub level: String,
+    pub message: String,
+    pub event_type: String,
+    pub branch_name: Option<String>,
+    pub commit_hash: Option<String>,
+    pub created_at: String,
+    pub metadata: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FailurePropagationBucket {
+    pub bucket_start: String,
+    pub warn_count: i64,
+    pub critical_count: i64,
+    pub info_count: i64,
+    pub total_count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SyncActionCounts {
+    pub push_count: i64,
+    pub pull_count: i64,
+    pub merge_count: i64,
+    pub sync_count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SyncMonitorResponse {
+    pub repo_id: String,
+    pub logs: Vec<SyncMonitorLogItem>,
+    pub anomalies: Vec<SyncAnomalyItem>,
+    pub failure_propagation: Vec<FailurePropagationBucket>,
+    pub action_counts: SyncActionCounts,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct VcsAnalyticsResponse {
     pub repo_id: String,
     pub default_branch: String,
+    pub dag_metrics: Option<RepositoryDagMetricsResponse>,
     pub branches: Vec<VcsBranchAnalytics>,
     pub topology_cache: Vec<VcsTopologyCacheItem>,
     pub timeline: Vec<VcsTimelineBucket>,
+    pub top_modified_files: Vec<TopModifiedFile>,
 }
