@@ -218,6 +218,10 @@ const translations = {
       displayName: "Display name",
       username: "Username",
       email: "Email",
+      alertsEyebrow: "Push Alerts",
+      alertsTitle: "Push Action Alerts",
+      pushAlertSenderEmail: "Sender email",
+      pushAlertSenderHelp: "Email address used as the sender for push action alert messages.",
       save: "Save Settings",
       saved: "Settings saved",
       profileSaved: "Profile saved",
@@ -431,6 +435,10 @@ const translations = {
       displayName: "Nombre visible",
       username: "Usuario",
       email: "Correo electronico",
+      alertsEyebrow: "Alertas push",
+      alertsTitle: "Alertas de acciones push",
+      pushAlertSenderEmail: "Correo remitente",
+      pushAlertSenderHelp: "Direccion de correo usada como remitente en las alertas de acciones push.",
       save: "Guardar ajustes",
       saved: "Ajustes guardados",
       profileSaved: "Perfil guardado",
@@ -460,6 +468,7 @@ const settingsDefaults = {
   displayName: "",
   username: "",
   email: "",
+  pushAlertSenderEmail: "",
 };
 
 let cliLoginAttemptStarted = false;
@@ -2531,6 +2540,18 @@ function SettingsPage({ copy, onDeleteAccount, onDeleteRepository, onSave, onUpd
             <TextField label={copy.settings.displayName} value={settings.displayName} onChange={(value) => onUpdate("displayName", value)} />
             <TextField label={copy.settings.username} value={settings.username} onChange={(value) => onUpdate("username", value)} />
             <TextField disabled help={copy.settings.emailLocked} label={copy.settings.email} type="email" value={settings.email} onChange={() => {}} />
+          </div>
+        </SettingsPanel>
+
+        <SettingsPanel eyebrow={copy.settings.alertsEyebrow} title={copy.settings.alertsTitle}>
+          <div className="form-grid">
+            <TextField
+              help={copy.settings.pushAlertSenderHelp}
+              label={copy.settings.pushAlertSenderEmail}
+              type="email"
+              value={settings.pushAlertSenderEmail}
+              onChange={(value) => onUpdate("pushAlertSenderEmail", value)}
+            />
           </div>
         </SettingsPanel>
 
