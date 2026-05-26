@@ -1,5 +1,5 @@
 import { SignIn, SignUp, SignedIn, SignedOut, useAuth, useClerk, useUser } from "@clerk/clerk-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   cloneRepositoryToDesktop,
   deleteAccountRecords,
@@ -201,6 +201,18 @@ const translations = {
         warn: "Warn",
         critical: "Critical",
         info: "Info",
+        actionModal: {
+          pushTitle: "Push detected",
+          pullTitle: "Pull detected",
+          title: "Repository action detected",
+          description: "A new push or pull action was registered for the active repository.",
+          inspect: "Inspect data",
+          close: "Close",
+          repository: "Repository",
+          branch: "Branch",
+          commit: "Commit",
+          time: "Time",
+        },
       },
     },
     settings: {
@@ -418,6 +430,18 @@ const translations = {
         warn: "Aviso",
         critical: "Critico",
         info: "Info",
+        actionModal: {
+          pushTitle: "Push detectado",
+          pullTitle: "Pull detectado",
+          title: "Accion de repositorio detectada",
+          description: "Se ha registrado una nueva accion push o pull en el repositorio activo.",
+          inspect: "Inspeccionar datos",
+          close: "Cerrar",
+          repository: "Repositorio",
+          branch: "Rama",
+          commit: "Commit",
+          time: "Hora",
+        },
       },
     },
     settings: {
@@ -472,6 +496,7 @@ const settingsDefaults = {
 };
 
 let cliLoginAttemptStarted = false;
+const REMOTE_ACTION_MODAL_POLL_MS = 12000;
 
 const clerkAppearance = {
   variables: {
@@ -680,11 +705,15 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   const { getToken, isLoaded, isSignedIn } = useAuth();
   const { user } = useUser();
   const [activePage, setActivePage] = useState("overview");
+  const [overviewRefreshKey, setOverviewRefreshKey] = useState(0);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
   const [deleteConfirmRepo, setDeleteConfirmRepo] = useState(null);
   const [deleteNotice, setDeleteNotice] = useState(null);
   const [cloneNotice, setCloneNotice] = useState(null);
+  const remoteActionInitializedRef = useRef(false);
+  const lastRemoteActionSignatureRef = useRef("");
+  const [remoteActionModal, setRemoteActionModal] = useState(null);
   const [cloneStatus, setCloneStatus] = useState({ status: "idle", repoId: "", message: "" });
   const [forcePullStatus, setForcePullStatus] = useState({ status: "idle", repoId: "", message: "" });
   const [repositoryState, setRepositoryState] = useState({
@@ -996,6 +1025,63 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
   const repoVisibility = activeRepository ? repositoryCopy[visibilityFromRepository(activeRepository)] : repositoryCopy.noData;
   const backendUnavailable = repositoryState.status === "unavailable";
 
+  useEffect(() => {
+    remoteActionInitializedRef.current = false;
+    lastRemoteActionSignatureRef.current = "";
+    setRemoteActionModal(null);
+  }, [activeRepository?.id]);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || backendUnavailable || !activeRepository?.id) {
+      return undefined;
+    }
+
+    let active = true;
+
+    async function pollRemoteActions() {
+      try {
+        const data = await fetchSyncMonitor(activeRepository.id, getToken);
+        if (!active) {
+          return;
+        }
+
+        const latestAction = latestRemotePushPullLog(data?.logs);
+        if (!latestAction) {
+          remoteActionInitializedRef.current = true;
+          return;
+        }
+
+        const signature = remoteActionLogSignature(latestAction);
+        if (!remoteActionInitializedRef.current) {
+          remoteActionInitializedRef.current = true;
+          lastRemoteActionSignatureRef.current = signature;
+          return;
+        }
+
+        if (signature && signature !== lastRemoteActionSignatureRef.current) {
+          lastRemoteActionSignatureRef.current = signature;
+          setRemoteActionModal(remoteActionModalFromLog(latestAction, activeRepository));
+        }
+      } catch {
+        remoteActionInitializedRef.current = true;
+      }
+    }
+
+    pollRemoteActions();
+    const interval = window.setInterval(pollRemoteActions, REMOTE_ACTION_MODAL_POLL_MS);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [activeRepository?.id, backendUnavailable, getToken, isLoaded, isSignedIn]);
+
+  const handleInspectRemoteAction = () => {
+    setRemoteActionModal(null);
+    setOverviewRefreshKey((current) => current + 1);
+    setActivePage("overview");
+  };
+
   return (
     <div className={appClassName}>
       <aside className="side-nav" aria-label="Primary">
@@ -1109,7 +1195,12 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
             settings={settings}
           />
         ) : activePage === "overview" ? (
-          <OverviewPage getToken={getToken} page={copy.pages.overview} repoId={activeRepository?.id} />
+          <OverviewPage
+            getToken={getToken}
+            page={copy.pages.overview}
+            refreshKey={overviewRefreshKey}
+            repoId={activeRepository?.id}
+          />
         ) : activePage === "activity" ? (
           <ActivityPage getToken={getToken} page={copy.pages.activity} repoId={activeRepository?.id} />
         ) : activePage === "branches" ? (
@@ -1171,8 +1262,54 @@ function AuthenticatedShell({ copy, settings, setSettings }) {
       {cloneNotice ? (
         <CloneResultNotice notice={cloneNotice} onClose={() => setCloneNotice(null)} />
       ) : null}
+      {remoteActionModal ? (
+        <RemoteActionDetectedModal
+          copy={copy.pages.sync.actionModal}
+          event={remoteActionModal}
+          onClose={() => setRemoteActionModal(null)}
+          onInspect={handleInspectRemoteAction}
+        />
+      ) : null}
     </div>
   );
+}
+
+function remoteActionLogSignature(log) {
+  return [
+    log?.id,
+    log?.created_at,
+    log?.action,
+    log?.branch_name,
+    log?.commit_hash,
+    log?.message,
+  ]
+    .filter(Boolean)
+    .join("|");
+}
+
+function latestRemotePushPullLog(logs) {
+  const items = Array.isArray(logs) ? logs : [];
+
+  return [...items]
+    .filter((item) => ["push", "pull"].includes(String(item?.action || "").toLowerCase()))
+    .sort((left, right) => {
+      const leftTime = new Date(left?.created_at ?? 0).getTime();
+      const rightTime = new Date(right?.created_at ?? 0).getTime();
+      const normalizedLeft = Number.isNaN(leftTime) ? 0 : leftTime;
+      const normalizedRight = Number.isNaN(rightTime) ? 0 : rightTime;
+      return normalizedRight - normalizedLeft;
+    })[0] ?? null;
+}
+
+function remoteActionModalFromLog(log, repository) {
+  return {
+    action: String(log?.action || "").toLowerCase(),
+    branch: log?.branch_name || log?.metadata?.branch || "",
+    commitHash: log?.commit_hash || log?.metadata?.head || "",
+    createdAt: log?.created_at || "",
+    message: log?.message || "",
+    repositoryName: repository?.name || repository?.id || "",
+  };
 }
 
 function LoginPage({ copy, theme }) {
@@ -1368,6 +1505,60 @@ function CloneResultNotice({ notice, onClose }) {
   );
 }
 
+function RemoteActionDetectedModal({ copy, event, onClose, onInspect }) {
+  const action = String(event?.action || "").toLowerCase();
+  const title = action === "push"
+    ? copy.pushTitle
+    : action === "pull"
+      ? copy.pullTitle
+      : copy.title;
+  const icon = action === "pull" ? "download" : "upload";
+  const details = [
+    { label: copy.repository, value: event?.repositoryName },
+    { label: copy.branch, value: event?.branch },
+    { label: copy.commit, value: event?.commitHash ? event.commitHash.slice(0, 12) : "" },
+    { label: copy.time, value: event?.createdAt ? formatDateTime(event.createdAt) : "" },
+  ].filter((detail) => detail.value);
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="modal-panel sync-action-modal" role="dialog" aria-modal="true" aria-labelledby="sync-action-modal-title">
+        <header className="modal-header">
+          <div>
+            <p className="label-caps">{copy.title}</p>
+            <h2 id="sync-action-modal-title">
+              <span className="material-symbols-outlined" aria-hidden="true">{icon}</span>
+              {title}
+            </h2>
+          </div>
+          <button className="icon-button" type="button" aria-label={copy.close} onClick={onClose}>
+            <span className="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        </header>
+
+        <div className="modal-form">
+          <p className="modal-description">{copy.description}</p>
+          {details.length > 0 ? (
+            <div className="form-grid">
+              {details.map((detail) => (
+                <label className="field-label" key={detail.label}>
+                  {detail.label}
+                  <input readOnly value={detail.value} />
+                </label>
+              ))}
+            </div>
+          ) : null}
+          {event?.message ? <p className="modal-description">{event.message}</p> : null}
+          <footer className="modal-actions">
+            <button className="secondary-button" type="button" onClick={onClose}>{copy.close}</button>
+            <button className="primary-button" type="button" onClick={onInspect}>{copy.inspect}</button>
+          </footer>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function compactNumber(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) {
@@ -1483,7 +1674,7 @@ function hasOverviewData(data) {
   );
 }
 
-function OverviewPage({ getToken, page, repoId }) {
+function OverviewPage({ getToken, page, refreshKey, repoId }) {
   const stats = page.stats;
   const [state, setState] = useState({
     status: "loading",
@@ -1537,7 +1728,7 @@ function OverviewPage({ getToken, page, repoId }) {
     return () => {
       active = false;
     };
-  }, [getToken, repoId]);
+  }, [getToken, refreshKey, repoId]);
 
   const data = state.data ?? {};
   const isReady = state.status === "ready" && hasOverviewData(data);

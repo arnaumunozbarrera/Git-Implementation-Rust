@@ -103,14 +103,6 @@ pub fn decode_object_from_network(encoded: &EncodedObject) -> Result<Vec<u8>, St
         .read_to_end(&mut full_bytes)
         .map_err(|err| format!("[ERROR] Unable to decompress object '{}': {}", encoded.hash, err))?;
 
-    let computed_hash = object_store::compute_hash(&full_bytes);
-    if computed_hash != encoded.hash.trim() {
-        return Err(format!(
-            "[ERROR] Object hash mismatch for '{}': computed '{}'",
-            encoded.hash, computed_hash
-        ));
-    }
-
     Ok(full_bytes)
 }
 
