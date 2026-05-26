@@ -1,9 +1,11 @@
 use std::collections::HashMap;
 
 use serde_json::json;
+use chrono::Utc;
 
 use crate::api::clients::supabase::SupabaseClient;
 use crate::api::auth::AuthenticatedUser;
+use crate::api::services::email_service;
 use crate::utils::fs_ops;
 use crate::utils::object_store::{self, ObjectType, ParsedObject};
 use crate::utils::refs;
@@ -35,6 +37,33 @@ pub async fn push_branch(
         true,
     )
     .await?;
+
+    let head_commit_hash = payload.head.trim();
+    
+    if let Ok(head_obj_result) = fetch_object_bytes(head_commit_hash) {
+        if let Ok(parsed_commit) = parse_commit_content(&head_obj_result) {
+            let mut object_cache = HashMap::new();
+            for obj in &payload.objects {
+                if let Ok(full_bytes) = sync::decode_object_from_network(obj) {
+                    if let Ok(parsed) = object_store::parse_full_object(&obj.hash, full_bytes) {
+                        object_cache.insert(obj.hash.trim().to_string(), parsed);
+                    }
+                }
+            }
+
+            if let Ok(top_files) = calculate_top_3_files_with_changes(&parsed_commit, &object_cache) {
+                let _ = send_push_email_alert(
+                    client,
+                    payload.repo_id.trim(),
+                    user.user_id.trim(),
+                    payload.branch.trim(),
+                    &parsed_commit.message,
+                    top_files,
+                )
+                .await;
+            }
+        }
+    }
 
     Ok(PushResponse {
         message: format!(
@@ -993,4 +1022,155 @@ fn load_object(hash: &str, cache: &HashMap<String, ParsedObject>) -> Result<Pars
     }
 
     object_store::read_object(hash)
+}
+
+struct FileChangeInfo {
+    file_path: String,
+    changes: i64,
+}
+
+fn calculate_top_3_files_with_changes(
+    commit: &ParsedCommit,
+    cache: &HashMap<String, ParsedObject>,
+) -> Result<Vec<(String, i64)>, String> {
+    let current_files = collect_tree_files(&commit.tree_hash, cache)?;
+    let parent_files = match commit.parent_hashes.first().map(String::as_str) {
+        Some(parent_hash) if !parent_hash.trim().is_empty() => {
+            let parent_commit = load_object(parent_hash, cache)?;
+            let parent_data = parse_commit_content(&parent_commit.content)?;
+            collect_tree_files(&parent_data.tree_hash, cache)?
+        }
+        _ => HashMap::new(),
+    };
+
+    let mut file_changes: Vec<FileChangeInfo> = Vec::new();
+
+    for (path, new_hash) in &current_files {
+        let change_count = match parent_files.get(path) {
+            Some(old_hash) if old_hash == new_hash => 0i64,
+            Some(old_hash) => {
+                let (additions, deletions) = diff_blob_hashes(old_hash, new_hash, cache)?;
+                additions + deletions
+            }
+            None => {
+                let (additions, _deletions) = diff_blob_hashes("", new_hash, cache)?;
+                additions
+            }
+        };
+
+        if change_count > 0 {
+            file_changes.push(FileChangeInfo {
+                file_path: path.clone(),
+                changes: change_count,
+            });
+        }
+    }
+
+    for (path, old_hash) in &parent_files {
+        if !current_files.contains_key(path) {
+            let (deletions, _) = diff_blob_hashes(old_hash, "", cache)?;
+            file_changes.push(FileChangeInfo {
+                file_path: path.clone(),
+                changes: deletions,
+            });
+        }
+    }
+
+    file_changes.sort_by(|a, b| b.changes.cmp(&a.changes));
+    let top_3: Vec<(String, i64)> = file_changes
+        .into_iter()
+        .take(3)
+        .map(|fc| (fc.file_path, fc.changes))
+        .collect();
+
+    Ok(top_3)
+}
+
+async fn get_repository_name(
+    client: &SupabaseClient,
+    repo_id: &str,
+) -> Result<String, String> {
+    let name: String = sqlx::query_scalar("SELECT name FROM repositories WHERE id = $1")
+        .bind(repo_id)
+        .fetch_optional(&client.pool)
+        .await
+        .map_err(|error| format!("[ERROR] Failed to fetch repository name: {}", error))?
+        .ok_or_else(|| format!("[ERROR] Repository '{}' not found", repo_id))?;
+
+    Ok(name)
+}
+
+async fn get_owner_email(
+    client: &SupabaseClient,
+    repo_id: &str,
+) -> Result<Option<String>, String> {
+    let email: Option<String> = sqlx::query_scalar(
+        "SELECT u.email FROM users u
+         JOIN repositories r ON r.owner_id = u.id
+         WHERE r.id = $1"
+    )
+    .bind(repo_id)
+    .fetch_optional(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to fetch owner email: {}", error))?;
+
+    Ok(email)
+}
+
+async fn get_user_info(
+    client: &SupabaseClient,
+    user_id: &str,
+) -> Result<(String, Option<String>), String> {
+    let (username, email): (Option<String>, Option<String>) = sqlx::query_as(
+        "SELECT username, email FROM users WHERE id = $1"
+    )
+    .bind(user_id)
+    .fetch_optional(&client.pool)
+    .await
+    .map_err(|error| format!("[ERROR] Failed to fetch user info: {}", error))?
+    .ok_or_else(|| format!("[ERROR] User '{}' not found", user_id))?;
+
+    let display_name = username.unwrap_or_else(|| user_id.to_string());
+    Ok((display_name, email))
+}
+
+async fn send_push_email_alert(
+    client: Option<&SupabaseClient>,
+    repo_id: &str,
+    user_id: &str,
+    branch: &str,
+    commit_message: &str,
+    top_files: Vec<(String, i64)>,
+) -> Result<(), String> {
+    let Some(client) = client else {
+        return Ok(());
+    };
+
+    let owner_email = get_owner_email(client, repo_id).await?;
+    let Some(recipient_email) = owner_email else {
+        return Ok(());
+    };
+
+    let repo_name = get_repository_name(client, repo_id).await?;
+    let (contributor_name, _) = get_user_info(client, user_id).await?;
+
+    let timestamp = Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+
+    let alert = email_service::EmailAlert {
+        recipient: recipient_email,
+        contributor: contributor_name,
+        commit_message: commit_message.to_string(),
+        repository_name: repo_name,
+        branch: branch.to_string(),
+        timestamp,
+        top_files,
+    };
+
+    email_service::send_push_alert(alert).await.ok();
+    Ok(())
+}
+
+fn fetch_object_bytes(hash: &str) -> Result<Vec<u8>, String> {
+    object_store::read_object(hash)
+        .map(|obj| obj.content)
 }
