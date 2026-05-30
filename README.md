@@ -262,4 +262,84 @@ Expected release assets:
 - `voor-linux-x86_64.zip`
 - `voor-macos-x86_64.zip`
 
----
+ ---
+
+## Public Demo Environment
+
+A public demonstration environment is available for evaluation purposes.
+
+The demo is deployed independently from the production platform and provides a frontend-only experience designed to showcase the main capabilities of Voor without exposing internal infrastructure, repositories, services, or user data.
+
+### Purpose
+
+The demo allows evaluators, recruiters, supervisors, and external reviewers to explore the platform UI and user experience without requiring access to:
+
+- Production repositories
+- Production databases
+- Backend services
+- Authentication credentials
+- Repository synchronization features
+- Administrative functionality
+
+### Architecture
+
+The demo is deployed as a standalone frontend application on Vercel and is completely isolated from the production environment.
+
+Characteristics:
+
+- No database connection
+- No backend dependency
+- No repository access
+- No write operations
+- No external service integrations
+- No access to real user data
+
+All information displayed within the demo is generated from predefined mock datasets.
+
+### Mock Data
+
+The demonstration environment includes realistic hardcoded data covering approximately three months of simulated repository activity.
+
+The generated datasets include:
+
+- Repository information
+- Branches and branch metrics
+- Commit histories
+- Activity timelines
+- Dashboard statistics
+- Monitoring information
+- Repository analytics
+- User and organization data
+- Charts and historical trends
+
+All relationships between entities are intentionally maintained to provide a realistic representation of platform usage.
+
+### Authentication
+
+The demo environment uses a simplified authentication flow intended exclusively for evaluation purposes.
+
+No production credentials are required and no authentication information is shared with the main platform.
+
+### Limitations
+
+The demo environment is intentionally restricted and does not execute real operations.
+
+The following features are disabled:
+
+- Repository creation
+- Repository synchronization
+- Push operations
+- Pull operations
+- Remote initialization
+- Database modifications
+- Background jobs
+- Monitoring execution
+- Administrative actions
+
+Interactive elements remain available when necessary to preserve the user experience, but actions do not affect any real system state.
+
+### Deployment
+
+The public demo is deployed independently using Vercel and can be updated without impacting the production platform, backend services, or database infrastructure.
+
+This separation ensures that demonstrations, evaluations, and academic reviews can be performed safely while preserving the integrity of the operational environment.
