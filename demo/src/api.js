@@ -1,4 +1,6 @@
-const now = new Date("2026-05-30T12:00:00.000Z");
+const now = new Date("2026-12-31T12:00:00.000Z");
+const developmentStart = new Date("2026-01-01T00:00:00.000Z");
+const developmentDays = Math.floor((now.getTime() - developmentStart.getTime()) / 86400000) + 1;
 
 const users = [
   { id: "demo_user_01", username: "Maya Chen", email: "maya.chen@example.invalid" },
@@ -15,7 +17,7 @@ const repositories = [
     default_branch: "main",
     is_private: true,
     description: "Distributed VCS telemetry and branch analytics platform",
-    created_at: isoDaysAgo(88),
+    created_at: "2026-01-06T09:18:00.000Z",
     updated_at: isoDaysAgo(0),
   },
   {
@@ -25,7 +27,7 @@ const repositories = [
     default_branch: "main",
     is_private: false,
     description: "Payment workflow reference repository",
-    created_at: isoDaysAgo(73),
+    created_at: "2026-01-19T11:42:00.000Z",
     updated_at: isoDaysAgo(2),
   },
   {
@@ -35,7 +37,7 @@ const repositories = [
     default_branch: "trunk",
     is_private: true,
     description: "Deployment manifests and operational recipes",
-    created_at: isoDaysAgo(61),
+    created_at: "2026-02-02T08:55:00.000Z",
     updated_at: isoDaysAgo(1),
   },
 ];
@@ -51,26 +53,40 @@ const filePools = {
     "src/App.jsx",
     "src/api.js",
     "src/components/vcs/branch-graph/BranchGraph.jsx",
+    "src/components/AnalyticsOverviewCard.jsx",
+    "src/hooks/useRepositoryAnalytics.js",
     "src/services/branchAnalyticsService.js",
+    "src/utils/topologyBuilder.js",
     "server/api/services/frontend_service.rs",
     "server/api/services/sync_service.rs",
+    "server/api/routes/repositories.rs",
+    "backend/voor/src/commands/sync.rs",
     "src/styles.css",
+    "README.md",
   ],
   "checkout-service": [
     "src/payments/checkout.ts",
     "src/payments/refunds.ts",
     "src/webhooks/stripe.ts",
     "src/cart/cache.ts",
+    "src/orders/fulfillment.ts",
+    "src/taxes/vat.ts",
     "tests/checkout.spec.ts",
+    "tests/webhooks.spec.ts",
     "db/migrations/settlements.sql",
+    "docs/runbook.md",
   ],
   "infra-recipes": [
     "clusters/prod/apps.yaml",
     "clusters/staging/apps.yaml",
+    "clusters/dev/apps.yaml",
     "terraform/network/main.tf",
     "terraform/iam/policies.tf",
+    "terraform/secrets/kms.tf",
     "scripts/rotate-secrets.ps1",
+    "scripts/drain-node.ps1",
     "observability/alerts.yaml",
+    "observability/dashboards/sync.json",
   ],
 };
 
@@ -87,6 +103,18 @@ const commitMessages = [
   "Adjust service health telemetry",
   "Add branch divergence scoring",
   "Stabilize pull request metrics",
+  "Split dashboard refresh worker",
+  "Backfill repository activity totals",
+  "Fix branch graph hover state",
+  "Rework stale branch thresholds",
+  "Patch webhook retry ordering",
+  "Add settlement export checks",
+  "Document rollback procedure",
+  "Tighten deployment diff output",
+  "Reduce noisy sync monitor logs",
+  "Handle empty topology cache",
+  "Batch migration status lookups",
+  "Improve error boundary copy",
 ];
 
 const commitsByRepo = Object.fromEntries(repositories.map((repo, repoIndex) => [
@@ -125,27 +153,95 @@ function pick(items, index) {
   return items[index % items.length];
 }
 
-function buildCommits(repo, repoIndex) {
-  const total = 92 - repoIndex * 13;
-  return Array.from({ length: total }, (_, index) => {
-    const dayOffset = Math.floor(index * (90 / total));
-    const author = pick(users, index + repoIndex);
-    const additions = 24 + ((index * 19 + repoIndex * 7) % 420);
-    const deletions = 8 + ((index * 11 + repoIndex * 5) % 210);
-    const hash = hashFor(repo.id, index);
-    const parent = index > 0 ? hashFor(repo.id, index - 1) : null;
-    const files = filePools[repo.id].slice(0).sort((a, b) => ((a.length + index) % 7) - ((b.length + index) % 7)).slice(0, 2 + (index % 3));
+function dateFromStart(dayIndex, hour = 10, minute = 0) {
+  const date = new Date(developmentStart);
+  date.setUTCDate(date.getUTCDate() + dayIndex);
+  date.setUTCHours(hour, minute, 0, 0);
+  return date.toISOString();
+}
+
+function buildDailyActivity(repoIndex) {
+  return Array.from({ length: developmentDays }, (_, dayIndex) => {
+    const date = new Date(developmentStart);
+    date.setUTCDate(date.getUTCDate() + dayIndex);
+    const weekDay = date.getUTCDay();
+    const weekendDrag = weekDay === 0 ? -2 : weekDay === 6 ? -1 : 0;
+    const month = date.getUTCMonth();
+    const dayOfMonth = date.getUTCDate();
+    const planningLull = [7, 36, 67, 104, 137, 182, 226, 272, 319].includes(dayIndex - repoIndex);
+    const incidentLull = (dayIndex >= 82 + repoIndex && dayIndex <= 84 + repoIndex)
+      || (dayIndex >= 249 - repoIndex && dayIndex <= 251 - repoIndex);
+    const summerSlowdown = month === 7 && dayOfMonth >= 5 && dayOfMonth <= 23;
+    const holidayFreeze = month === 11 && dayOfMonth >= 21;
+    const releaseRush = (dayIndex >= 54 && dayIndex <= 60)
+      || (dayIndex >= 117 + repoIndex && dayIndex <= 124 + repoIndex)
+      || (dayIndex >= 180 - repoIndex && dayIndex <= 187 - repoIndex)
+      || (dayIndex >= 263 + repoIndex && dayIndex <= 271 + repoIndex)
+      || (dayIndex >= 327 - repoIndex && dayIndex <= 333 - repoIndex);
+    const reviewPileup = [12, 28, 53, 73, 96, 119, 142, 156, 177, 203, 234, 258, 286, 312, 341, 356].includes((dayIndex + repoIndex * 3) % 365);
+    const base = 1 + ((dayIndex * 7 + repoIndex * 5) % 3);
+    const churn = ((dayIndex * dayIndex + repoIndex * 11) % 7) === 0 ? 2 : 0;
+    const maintenanceBurst = dayOfMonth === 1 && weekDay >= 1 && weekDay <= 4 ? 2 : 0;
+    const count = Math.max(
+      0,
+      base
+        + weekendDrag
+        + churn
+        + maintenanceBurst
+        + (releaseRush ? 5 : 0)
+        + (reviewPileup ? 4 : 0)
+        - (planningLull ? 2 : 0)
+        - (incidentLull ? 4 : 0)
+        - (summerSlowdown ? 2 : 0)
+        - (holidayFreeze ? 2 : 0),
+    );
+
     return {
-      hash,
-      parent_hash: parent,
-      message: pick(commitMessages, index + repoIndex),
-      author,
-      additions,
-      deletions,
-      changed_files: files,
-      created_at: isoDaysAgo(90 - dayOffset, 8 + (index % 10)),
+      dayIndex,
+      commit_count: count,
+      additions: count * (18 + ((dayIndex * 13 + repoIndex * 17) % 110)) + (releaseRush ? 260 + repoIndex * 35 : 0),
+      deletions: count * (7 + ((dayIndex * 11 + repoIndex * 19) % 74)) + (incidentLull ? 40 : 0),
+      contributor_count: count === 0 ? 0 : Math.min(users.length, 1 + ((dayIndex + repoIndex + (releaseRush || reviewPileup ? 2 : 0)) % users.length)),
     };
-  }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  });
+}
+
+function buildCommits(repo, repoIndex) {
+  const dailyActivity = buildDailyActivity(repoIndex);
+  const commits = [];
+
+  dailyActivity.forEach((day, dayPosition) => {
+    const intraDaySpike = day.commit_count >= 7 ? 1 : 0;
+    for (let commitOfDay = 0; commitOfDay < day.commit_count; commitOfDay += 1) {
+      const index = commits.length;
+      const author = pick(users, dayPosition + commitOfDay + repoIndex + intraDaySpike);
+      const additions = 12 + ((day.additions + index * 23 + commitOfDay * 47) % 690);
+      const deletions = 3 + ((day.deletions + index * 17 + commitOfDay * 29) % 320);
+      const hash = hashFor(repo.id, index);
+      const parent = index > 0 ? hashFor(repo.id, index - 1) : null;
+      const fileCount = Math.min(filePools[repo.id].length, 1 + ((dayPosition + commitOfDay + repoIndex) % 5) + (day.commit_count > 6 && commitOfDay % 3 === 0 ? 2 : 0));
+      const fileOffset = (dayPosition * 2 + commitOfDay * 3 + repoIndex) % filePools[repo.id].length;
+      const files = Array.from({ length: fileCount }, (_, fileIndex) => (
+        filePools[repo.id][(fileOffset + fileIndex * 2) % filePools[repo.id].length]
+      ));
+
+      commits.push({
+        hash,
+        parent_hash: parent,
+        message: pick(commitMessages, dayPosition + commitOfDay * 2 + repoIndex),
+        author,
+        additions,
+        deletions,
+        changed_files: [...new Set(files)],
+        created_at: dateFromStart(day.dayIndex, 7 + ((commitOfDay * 2 + dayPosition + repoIndex) % 12), (commitOfDay * 11 + dayPosition * 3) % 60),
+      });
+    }
+  });
+
+  return commits.map((commit, index) => ({
+    ...commit,
+    parent_hash: index > 0 ? commits[index - 1].hash : null,
+  })).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 }
 
 function buildBranches(repo, repoIndex, commits) {
@@ -167,7 +263,7 @@ function buildBranches(repo, repoIndex, commits) {
       merge_base_hash: commits[Math.min(commits.length - 1, headIndex + behind)]?.hash || head.hash,
       latest_commit: head,
       latestCommit: head,
-      created_at: isoDaysAgo(88 - index * 5),
+      created_at: dateFromStart(Math.min(developmentDays - 1, 2 + index * 11 + repoIndex * 3), 9 + (index % 5)),
       last_activity_at: isoDaysAgo(staleDays),
       last_analyzed_at: isoDaysAgo(Math.max(0, staleDays - 1)),
       is_default: isDefault,
@@ -187,18 +283,13 @@ function buildBranches(repo, repoIndex, commits) {
 }
 
 function buildTimeline(repoIndex) {
-  return Array.from({ length: 92 }, (_, index) => {
-    const day = 91 - index;
-    const wave = Math.round(3 + Math.sin(index / 5) * 3 + ((index + repoIndex) % 4));
-    const commit_count = Math.max(0, wave + (index % 13 === 0 ? 5 : 0));
-    return {
-      bucket_start: isoDaysAgo(day, 0),
-      commit_count,
-      additions: commit_count * (34 + ((index * 7 + repoIndex) % 50)),
-      deletions: commit_count * (12 + ((index * 5 + repoIndex) % 32)),
-      contributor_count: Math.min(users.length, 1 + ((index + repoIndex) % users.length)),
-    };
-  });
+  return buildDailyActivity(repoIndex).map((day) => ({
+    bucket_start: dateFromStart(day.dayIndex, 0),
+    commit_count: day.commit_count,
+    additions: day.additions,
+    deletions: day.deletions,
+    contributor_count: day.contributor_count,
+  }));
 }
 
 function repoOrThrow(repoId) {
@@ -238,7 +329,7 @@ export async function fetchSystemHealth() {
       { service: "frontend-demo", health: "healthy", status: "static", last_message: "Served from local mock data" },
       { service: "api-simulator", health: "healthy", status: "read-only", last_message: "All backend calls intercepted" },
       { service: "sync-monitor", health: "warning", status: "simulated", last_message: "Remote operations are disabled" },
-      { service: "analytics", health: "healthy", status: "precomputed", last_message: "Three-month activity window loaded" },
+      { service: "analytics", health: "healthy", status: "precomputed", last_message: "Full-year 2026 activity window loaded" },
     ],
     recent_logs: [
       { event: "demo-ready", message: "Isolated demo runtime initialized", timestamp: now.toISOString() },
