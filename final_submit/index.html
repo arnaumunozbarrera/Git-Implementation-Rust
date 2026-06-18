@@ -1,0 +1,683 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Final Submit Index</title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap");
+
+    :root {
+      --canvas: #0d1117;
+      --surface: #161b22;
+      --surface-container: #1c2025;
+      --surface-high: #272a30;
+      --border: #30363d;
+      --outline: #8b919d;
+      --outline-variant: #414752;
+      --text: #e0e2ea;
+      --text-muted: #c0c7d4;
+      --primary: #a2c9ff;
+      --primary-strong: #58a6ff;
+      --warning: #ffba42;
+      --accent-purple: #bc8cff;
+      --accent-green: #7ee787;
+      --accent-orange: #ffa657;
+      --accent-red: #ff7b72;
+      color-scheme: dark;
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--canvas);
+      color: var(--text);
+    }
+
+    * { box-sizing: border-box; }
+
+    html,
+    body {
+      min-height: 100%;
+      margin: 0;
+      background: var(--canvas);
+    }
+
+    body {
+      min-height: 100vh;
+      color: var(--text);
+    }
+
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+
+    code {
+      color: var(--outline);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    }
+
+    .material-symbols-outlined {
+      font-size: 20px;
+      font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+    }
+
+    .page-shell {
+      min-height: 100vh;
+      padding: 32px;
+      background:
+        linear-gradient(180deg, rgb(13 17 23 / 88%), rgb(13 17 23 / 100%) 260px),
+        radial-gradient(circle at 70% 18%, rgb(88 166 255 / 10%), transparent 28%),
+        radial-gradient(circle at 26% 34%, rgb(255 186 66 / 6%), transparent 24%),
+        var(--canvas);
+    }
+
+    .top-bar {
+      display: flex;
+      min-height: 56px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: color-mix(in srgb, var(--canvas) 84%, transparent);
+      padding: 0 18px;
+      backdrop-filter: blur(10px);
+    }
+
+    .brand-block {
+      display: flex;
+      min-width: 0;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-icon {
+      color: var(--primary-strong);
+      font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24;
+    }
+
+    .brand-title {
+      color: var(--primary-strong);
+      font-size: 18px;
+      font-weight: 800;
+      line-height: 24px;
+    }
+
+    .brand-version,
+    .pill,
+    .mini-pill,
+    .path-text {
+      color: var(--outline);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 11px;
+      line-height: 16px;
+    }
+
+    .pill,
+    .mini-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface);
+      padding: 4px 8px;
+      color: var(--outline);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      line-height: 16px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .pill.primary {
+      border-color: rgb(88 166 255 / 40%);
+      background: rgb(88 166 255 / 12%);
+      color: var(--primary-strong);
+    }
+
+    .hero {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      margin: 28px 0 18px;
+    }
+
+    .hero-copy { max-width: 820px; }
+
+    .eyebrow {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      line-height: 16px;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 4px 0 10px;
+      color: var(--primary-strong);
+      font-size: 28px;
+      font-weight: 700;
+      line-height: 36px;
+    }
+
+    .hero-copy p:last-child {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 14px;
+      line-height: 21px;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .button-link,
+    .tree-link,
+    .card-link,
+    .toc-link {
+      transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+    }
+
+    .button-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 36px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: transparent;
+      padding: 8px 12px;
+      color: var(--outline);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 18px;
+    }
+
+    .button-link:hover,
+    .button-link:focus-visible,
+    .tree-link:hover,
+    .tree-link:focus-visible,
+    .card-link:hover,
+    .card-link:focus-visible,
+    .toc-link:hover,
+    .toc-link:focus-visible {
+      border-color: color-mix(in srgb, var(--primary-strong) 60%, var(--border));
+      background: var(--surface-container);
+      color: var(--text);
+      outline: none;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .stat-card,
+    .panel,
+    .structure-card,
+    .tree-card,
+    .note-card {
+      border: 1px solid color-mix(in srgb, var(--outline-variant) 76%, transparent);
+      border-radius: 6px;
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--surface-container) 74%, transparent), transparent 40%),
+        var(--surface);
+      box-shadow:
+        inset 0 1px 0 rgb(255 255 255 / 4%),
+        0 18px 54px rgb(0 0 0 / 18%);
+    }
+
+    .stat-card { padding: 14px 16px; }
+
+    .stat-label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--outline);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      line-height: 14px;
+      text-transform: uppercase;
+    }
+
+    .stat-value {
+      display: block;
+      overflow: hidden;
+      color: var(--text);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 24px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .layout {
+      display: grid;
+      /* grid-template-columns: 280px minmax(0, 1fr); */
+      gap: 12px;
+      align-items: start;
+    }
+
+    .panel-header {
+      display: flex;
+      min-height: 56px;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      border-bottom: 1px solid var(--border);
+      background:
+        linear-gradient(180deg, color-mix(in srgb, var(--surface-container) 92%, transparent), color-mix(in srgb, var(--surface-container) 72%, transparent));
+      padding: 12px 16px;
+    }
+
+    .panel-header h2,
+    .section-heading h2 {
+      margin: 0;
+      color: var(--text);
+      font-size: 17px;
+      font-weight: 600;
+      line-height: 24px;
+    }
+
+    .sidebar-body,
+    .main-body { padding: 14px; }
+
+    .toc-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .toc-link {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid var(--border);
+      border-left: 2px solid var(--primary-strong);
+      border-radius: 4px;
+      background: color-mix(in srgb, var(--primary-strong) 8%, var(--surface-container));
+      padding: 10px;
+    }
+
+    .toc-link .material-symbols-outlined {
+      color: var(--primary-strong);
+      font-size: 18px;
+    }
+
+    .toc-title {
+      display: block;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 18px;
+    }
+
+    .toc-path {
+      display: block;
+      overflow: hidden;
+      color: var(--outline);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 10px;
+      line-height: 14px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .toc-kind {
+      color: var(--outline);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .section-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .section-heading p {
+      margin: 4px 0 0;
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 19px;
+    }
+
+    .tree-card {
+      margin-bottom: 12px;
+      padding: 16px;
+    }
+
+    .tree-root {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+      color: var(--primary-strong);
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 22px;
+    }
+
+    .tree-root .material-symbols-outlined {
+      font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24;
+    }
+
+    .tree-list,
+    .nested-tree {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .tree-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .nested-tree {
+      display: grid;
+      gap: 6px;
+      margin-top: 8px;
+      padding-left: 28px;
+    }
+
+    .tree-item {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: var(--surface-container);
+      padding: 10px 12px;
+    }
+
+    .nested-tree .tree-item {
+      background: color-mix(in srgb, var(--surface-container) 72%, var(--canvas));
+    }
+
+    .tree-main { min-width: 0; }
+
+    .tree-name {
+      display: block;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 18px;
+    }
+
+    .tree-meta {
+      display: block;
+      overflow: hidden;
+      color: var(--outline);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 10px;
+      line-height: 14px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tree-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .tree-link,
+    .card-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      background: transparent;
+      padding: 6px 10px;
+      color: var(--outline);
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 16px;
+    }
+
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .structure-card { padding: 16px; }
+
+    .card-top {
+      display: flex;
+      align-items: start;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .card-icon-wrap {
+      display: inline-grid;
+      flex: 0 0 auto;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border: 1px solid color-mix(in srgb, var(--accent, var(--primary-strong)) 40%, var(--border));
+      border-radius: 4px;
+      background: color-mix(in srgb, var(--accent, var(--primary-strong)) 12%, var(--canvas));
+      color: var(--accent, var(--primary-strong));
+    }
+
+    .card-title-block {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .card-title {
+      margin: 0;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 20px;
+    }
+
+    .card-path {
+      display: block;
+      margin-top: 4px;
+      color: var(--outline);
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 10px;
+      line-height: 14px;
+      word-break: break-word;
+    }
+
+    .card-description {
+      margin: 0 0 12px;
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    .child-list {
+      margin: 0 0 14px;
+      padding-left: 18px;
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 19px;
+    }
+
+    .child-list li + li { margin-top: 4px; }
+
+    .card-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .note-card {
+      margin-top: 12px;
+      padding: 14px 16px;
+    }
+
+    .note-card strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 18px;
+    }
+
+    .note-card p {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 12px;
+      line-height: 18px;
+    }
+
+    @media (max-width: 1100px) {
+      .page-shell { padding: 24px; }
+      .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .layout { grid-template-columns: 1fr; }
+      .cards-grid { grid-template-columns: 1fr; }
+      .hero { align-items: start; flex-direction: column; }
+    }
+
+    @media (max-width: 720px) {
+      .page-shell { padding: 18px; }
+      .stats-grid { grid-template-columns: 1fr; }
+      .top-bar { align-items: start; flex-direction: column; padding: 14px 16px; }
+      .tree-item,
+      .toc-link { grid-template-columns: auto minmax(0, 1fr); }
+      .tree-actions,
+      .toc-kind { grid-column: 2; justify-content: start; }
+      .nested-tree { padding-left: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page-shell">
+    <header class="top-bar" aria-label="Final submit index header">
+      <div class="brand-block">
+        <div>
+          <div class="brand-title">Final Submit</div>
+        </div>
+      </div>
+      <div class="pill primary">submission structure</div>
+    </header>
+
+    <section class="hero" aria-labelledby="page-title">
+      <div class="hero-copy">
+        <p class="eyebrow">Repository deliverables</p>
+        <h1 id="page-title">Index of Dossier content</h1>
+      </div>
+      <!-- <div class="hero-actions" aria-label="Primary folders">
+        <a class="button-link" href="./final_submit/project_documents/"><span class="material-symbols-outlined" aria-hidden="true">folder</span>Project documents</a>
+        <a class="button-link" href="./final_submit/defense_resources/"><span class="material-symbols-outlined" aria-hidden="true">co_present</span>Defense resources</a>
+        <a class="button-link" href="./final_submit/diagrams/"><span class="material-symbols-outlined" aria-hidden="true">schema</span>Diagrams</a>
+      </div> -->
+    </section>
+
+    <!-- <section class="stats-grid" aria-label="Final submit summary">
+      <article class="stat-card"><span class="stat-label">Indexed root</span><span class="stat-value">final_submit/</span></article>
+      <article class="stat-card"><span class="stat-label">Main folders</span><span class="stat-value">5</span></article>
+      <article class="stat-card"><span class="stat-label">Indexed items</span><span class="stat-value">17</span></article>
+      <article class="stat-card"><span class="stat-label">Excluded</span><span class="stat-value">index.html</span></article>
+    </section> -->
+
+    <section class="layout" aria-label="Final submit structure">
+      <!-- <aside class="panel" aria-label="Quick navigation"> -->
+        <!-- <header class="panel-header"><h2>Quick navigation</h2><span class="mini-pill">final_submit</span></header>
+        <div class="sidebar-body">
+          <nav class="toc-list" aria-label="Final submit shortcuts">
+            <a class="toc-link" href="#root-tree"><span class="material-symbols-outlined" aria-hidden="true">account_tree</span><span><span class="toc-title">Folder tree</span><span class="toc-path">final_submit/</span></span><span class="toc-kind">index</span></a>
+            <a class="toc-link" href="#project-documents"><span class="material-symbols-outlined" aria-hidden="true">folder</span><span><span class="toc-title">Project documents</span><span class="toc-path">project_documents/</span></span><span class="toc-kind">folder</span></a>
+            <a class="toc-link" href="#defense-fresources"><span class="material-symbols-outlined" aria-hidden="true">co_present</span><span><span class="toc-title">Defense resources</span><span class="toc-path">defense_resources/</span></span><span class="toc-kind">folder</span></a>
+            <a class="toc-link" href="#diagrams"><span class="material-symbols-outlined" aria-hidden="true">schema</span><span><span class="toc-title">Diagrams</span><span class="toc-path">diagrams/</span></span><span class="toc-kind">folder</span></a>
+            <a class="toc-link" href="#timeline"><span class="material-symbols-outlined" aria-hidden="true">event_note</span><span><span class="toc-title">Timeline</span><span class="toc-path">timeline/</span></span><span class="toc-kind">folder</span></a>
+          </nav>
+        </div> -->
+      <!-- </aside> -->
+
+      <section class="panel" aria-label="Indexed contents">
+        <header class="panel-header"><h2>Contents</h2>
+          <!-- <span class="mini-pill">links enabled</span> -->
+        </header>
+        <div class="main-body">
+          <div class="section-heading" id="root-tree">
+            <div>
+              <h2>Folder structure</h2>
+              <p>Only the expected deliverable folders and files are included.</p>
+            </div>
+          </div>
+
+          <article class="tree-card" aria-label="Final submit folder tree">
+            <div class="tree-root"><span class="material-symbols-outlined" aria-hidden="true">folder_open</span><span>final_submit /</span></div>
+            <ul class="tree-list">
+              <li>
+                <div class="tree-item"><span class="material-symbols-outlined" aria-hidden="true" style="color: var(--primary-strong);">folder</span><div class="tree-main"><span class="tree-name">project_documents</span><span class="tree-meta">./final_submit/project_documents/</span></div><div class="tree-actions"><a class="tree-link" href="./final_submit/project_documents/">Open</a></div></div>
+                <ul class="nested-tree">
+                  <li class="tree-item"><span class="material-symbols-outlined" aria-hidden="true" style="color: var(--primary);">folder</span><div class="tree-main"><span class="tree-name">parcial_informs</span><span class="tree-meta">./final_submit/project_documents/parcial_informs/</span></div><div class="tree-actions"><a class="tree-link" href="./final_submit/project_documents/parcial_informs/">Open</a></div></li>
+                  <li class="tree-item"><span class="material-symbols-outlined" aria-hidden="true" style="color: var(--primary);">folder</span><div class="tree-main"><span class="tree-name">final_inform</span><span class="tree-meta">./final_submit/project_documents/final_inform/</span></div><div class="tree-actions"><a class="tree-link" href="./final_submit/project_documents/final_inform/">Open</a></div></li>
+                  <li class="tree-item"><span class="material-symbols-outlined" aria-hidden="true" style="color: var(--primary);">folder</span><div class="tree-main"><span class="tree-name">tasks</span><span class="tree-meta">./final_submit/project_documents/tasks/</span></div><div class="tree-actions"><a class="tree-link" href="./final_submit/project_documents/tasks/">Open</a></div></li>
+                </ul>
+              </li>
+
+              <li>
+                <div class="tree-item"><span class="material-symbols-outlined" aria-hidden="true" style="color: var(--accent-purple);">folder</span><div class="tree-main"><span class="tree-name">defense_resources</span><span class="tree-meta">./final_submit/defense_resources/</span></div><div class="tree-actions"><a class="tree-link" href="./final_submit/defense_resources/">Open</a></div></div>
+                <ul class="nested-tree">
+                  <li class="tree-item"><span class="material-symbols-outlined" aria-hidden="true" style="color: var(--accent-purple);">slideshow</span><div class="tree-main"><span class="tree-name">presentation.pptx</span><span class="tree-meta">./final_submit/defense_resources/presentation.pptx</span></div><div class="tree-actions"><a class="tree-link" href="./final_submit/defense_resources/presentation.pptx">Open</a></div></li>
+                  <li class="tree-item"><span class="material-symbols-outlined" aria-hidden="true" style="color: var(--accent-purple);">folder</span><div class="tree-main"><span class="tree-name">demo_videos</span><span class="tree-meta">./final_submit/defense_resources/demo_videos/</span></div><div class="tree-actions"><a class="tree-link" href="./final_submit/defense_resources/demo_videos/">Open</a></div></li>
+                </ul>
+              </li>
+
+              <li>
+                <div class="tree-item"><span class="material-symbols-outlined" aria-hidden="true" style="color: var(--accent-green);">folder</span><div class="tree-main"><span class="tree-name">diagrams</span><span class="tree-meta">./final_submit/diagrams/</span></div><div class="tree-actions"><a class="tree-link" href="./final_submit/diagrams/">Open</a></div></div>
+                <ul class="nested-tree">
+                  <li class="tree-item"><span class="material-symbols-outlined" aria-hidden="true" style="color: var(--accent-green);">hub</span><div class="tree-main"><span class="tree-name">system_architecture</span><span class="tree-meta">./final_submit/diagrams/system_architecture.*</span></div><div class="tree-actions"><a class="tree-link" href="./final_submit/diagrams/">Open folder</a></div></li>
+                  <li class="tree-item"><span class="material-symbols-outlined" aria-hidden="true" style="color: var(--accent-green);">call_split</span><div class="tree-main"><span class="tree-name">git_workflows</span><span class="tree-meta">./final_submit/diagrams/git_workflows.*</span></div><div class="tree-actions"><a class="tree-link" href="./final_submit/diagrams/">Open folder</a></div></li>
+                  <li class="tree-item"><span class="material-symbols-outlined" aria-hidden="true" style="color: var(--accent-green);">group</span><div class="tree-main"><span class="tree-name">use_cases</span><span class="tree-meta">./final_submit/diagrams/use_cases.*</span></div><div class="tree-actions"><a class="tree-link" href="./final_submit/diagrams/">Open folder</a></div></li>
+                  <li class="tree-item"><span class="material-symbols-outlined" aria-hidden="true" style="color: var(--accent-green);">folder</span><div class="tree-main"><span class="tree-name">sketches_prototypes</span><span class="tree-meta">./final_submit/diagrams/sketches_prototypes/</span></div><div class="tree-actions"><a class="tree-link" href="./final_submit/diagrams/sketches_prototypes/">Open</a></div></li>
+                  <li class="tree-item"><span class="material-symbols-outlined" aria-hidden="true" style="color: var(--accent-green);">database</span><div class="tree-main"><span class="tree-name">db_final_schema</span><span class="tree-meta">./final_submit/diagrams/db_final_schema.*</span></div><div class="tree-actions"><a class="tree-link" href="./final_submit/diagrams/">Open folder</a></div></li>
+                </ul>
+              </li>
+
+              <li>
+                <ul class="nested-tree">
+                </ul>
+              </li>
+
+              <li>
+                <div class="tree-item"><span class="material-symbols-outlined" aria-hidden="true" style="color: var(--accent-orange);">folder</span><div class="tree-main"><span class="tree-name">timeline</span><span class="tree-meta">./final_submit/timeline/</span></div><div class="tree-actions"><a class="tree-link" href="./final_submit/timeline/">Open</a></div></div>
+                <ul class="nested-tree">
+                  <li class="tree-item"><span class="material-symbols-outlined" aria-hidden="true" style="color: var(--accent-orange);">view_timeline</span><div class="tree-main"><span class="tree-name">project_timeline</span><span class="tree-meta">./final_submit/timeline/project_timeline.*</span></div><div class="tree-actions"><a class="tree-link" href="./final_submit/timeline/">Open folder</a></div></li>
+                </ul>
+              </li>
+            </ul>
+          </article>
+
+          <!-- <div class="cards-grid" aria-label="Final submit detailed sections">
+            <article class="structure-card" id="project-documents" style="--accent: var(--primary-strong);"><div class="card-top"><span class="card-icon-wrap"><span class="material-symbols-outlined" aria-hidden="true">folder</span></span><div class="card-title-block"><h3 class="card-title">Project documents</h3><span class="card-path">./final_submit/project_documents/</span></div><span class="mini-pill">folder</span></div><p class="card-description">Written project material and task records.</p><ul class="child-list"><li>parcial_informs/</li><li>final_inform/</li><li>tasks/</li></ul><div class="card-actions"><a class="card-link" href="./final_submit/project_documents/">Open folder</a></div></article>
+            <article class="structure-card" id="defense-resources" style="--accent: var(--accent-purple);"><div class="card-top"><span class="card-icon-wrap"><span class="material-symbols-outlined" aria-hidden="true">co_present</span></span><div class="card-title-block"><h3 class="card-title">Defense resources</h3><span class="card-path">./final_submit/defense_resources/</span></div><span class="mini-pill">folder</span></div><p class="card-description">Defense-oriented resources for presentation and demonstration.</p><ul class="child-list"><li>presentation.pptx</li><li>demo_videos/</li></ul><div class="card-actions"><a class="card-link" href="./final_submit/defense_resources/">Open folder</a><a class="card-link" href="./final_submit/defense_resources/presentation.pptx">Open presentation</a></div></article>
+            <article class="structure-card" id="diagrams" style="--accent: var(--accent-green);"><div class="card-top"><span class="card-icon-wrap"><span class="material-symbols-outlined" aria-hidden="true">schema</span></span><div class="card-title-block"><h3 class="card-title">Diagrams</h3><span class="card-path">./final_submit/diagrams/</span></div><span class="mini-pill">folder</span></div><p class="card-description">Architecture and design diagrams used to explain the project.</p><ul class="child-list"><li>system_architecture.*</li><li>git_workflows.*</li><li>use_cases.*</li><li>sketches_prototypes/</li><li>db_final_schema.*</li></ul><div class="card-actions"><a class="card-link" href="./final_submit/diagrams/">Open folder</a></div></article>
+            <article class="structure-card" id="timeline" style="--accent: var(--accent-orange);"><div class="card-top"><span class="card-icon-wrap"><span class="material-symbols-outlined" aria-hidden="true">event_note</span></span><div class="card-title-block"><h3 class="card-title">Timeline</h3><span class="card-path">./final_submit/timeline/</span></div><span class="mini-pill">folder</span></div><p class="card-description">Chronological project timeline and delivery sequence.</p><ul class="child-list"><li>project_timeline.*</li></ul><div class="card-actions"><a class="card-link" href="./final_submit/timeline/">Open folder</a></div></article>
+          </div> -->
+
+        </div>
+      </section>
+    </section>
+  </main>
+</body>
+</html>
